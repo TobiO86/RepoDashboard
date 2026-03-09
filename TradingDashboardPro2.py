@@ -19,7 +19,7 @@ symbol = st.sidebar.selectbox(
 
 period = st.sidebar.selectbox(
     "Period",
-    ["1mo","3mo","6mo","1y","2y"]
+    ["5d","1mo","3mo","6mo","1y"]
 )
 
 interval = st.sidebar.selectbox(
@@ -82,14 +82,16 @@ show_mtf = st.sidebar.checkbox("Multi Timeframe",False)
 @st.cache_data(ttl=300)
 def load_data(symbol,period,interval):
 
-    df = yf.download(symbol,period=period,interval=interval)
+    df = yf.download(symbol,period=period,interval=interval, progress=False)
 
     if isinstance(df.columns,pd.MultiIndex):
         df.columns = df.columns.get_level_values(0)
 
     df = df.dropna()
-
+    st.write("Rows:", len(df))
+    st.write(df.tail())
     return df
+
 
 
 df = load_data(symbol,period,interval)
