@@ -2,9 +2,20 @@ import streamlit as st
 import yfinance as yf
 import pandas as pd
 import plotly.graph_objects as go
+import time
 
 st.set_page_config(layout="wide")
 st.title("Trading Dashboard PRO")
+
+# Auto Refresh alle 60 Sekunden
+refresh_rate = 30
+
+if "last_refresh" not in st.session_state:
+    st.session_state.last_refresh = time.time()
+
+if time.time() - st.session_state.last_refresh > refresh_rate:
+    st.session_state.last_refresh = time.time()
+    st.rerun()
 
 # -----------------------
 # SIDEBAR
@@ -12,10 +23,10 @@ st.title("Trading Dashboard PRO")
 
 st.sidebar.header("Market")
 
-symbol = st.sidebar.selectbox(
-    "Asset",
-    ["BTC-USD","ETH-USD","SOL-USD","XRP-USD","AAPL","NVDA","SPY","QQQ","GC=F","MSTR","NFLX"]
-)
+symbol = st.sidebar.text_input(
+    "Ticker",
+    value="BTC-USD"
+).upper()
 
 period = st.sidebar.selectbox(
     "Period",
@@ -48,6 +59,8 @@ show_resistance = st.sidebar.checkbox("Resistance",True)
 show_sweeps = st.sidebar.checkbox("Liquidity Sweeps",False)
 show_orderblocks = st.sidebar.checkbox("Orderblocks",False)
 
+show_vwap = st.sidebar.checkbox("VWAP", True)
+
 # -----------------------
 # INDICATORS
 # -----------------------
@@ -56,6 +69,8 @@ st.sidebar.header("Indicators")
 
 show_rsi = st.sidebar.checkbox("RSI",True)
 show_macd = st.sidebar.checkbox("MACD",True)
+
+
 
 # -----------------------
 # ANALYSIS
@@ -131,6 +146,12 @@ ema26 = df["Close"].ewm(span=26).mean()
 df["MACD"] = ema12 - ema26
 df["MACD_signal"] = df["MACD"].ewm(span=9).mean()
 df["MACD_hist"] = df["MACD"] - df["MACD_signal"]
+
+# VWAP
+typical_price = (df["High"] + df["Low"] + df["Close"]) / 3
+vwap = (typical_price * df["Volume"]).cumsum() / df["Volume"].cumsum()
+
+df["VWAP"] = vwap
 
 # -----------------------
 # CURRENT INDICATOR VALUES
@@ -356,6 +377,16 @@ if show_sweeps:
                 marker=dict(size=10,color="red"),
                 name="Bear Sweep"
             ))
+            
+        if show_vwap:
+            fig.add_trace(
+                go.Scatter(
+                    x=df.index,
+                    y=df["VWAP"],
+                    name="VWAP",
+                    line=dict(color="orange", width=2)
+                )
+            )    
 
 fig.update_layout(
     height=900,
@@ -462,6 +493,8 @@ st.subheader("Indicator Values")
 
 col1,col2,col3,col4 = st.columns(4)
 
+vwap_last = df["VWAP"].iloc[-1]
+    
 with col1:
     st.metric("EMA20",f"{ema20_last:.2f}")
     st.metric("EMA50",f"{ema50_last:.2f}")
@@ -469,6 +502,7 @@ with col1:
 
 with col2:
     st.metric("RSI",f"{rsi_last:.2f}")
+    st.metric("VWAP",f"{vwap_last:.2f}")
 
 with col3:
     st.metric("MACD",f"{macd_last:.2f}")
