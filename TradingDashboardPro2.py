@@ -2,20 +2,13 @@ import streamlit as st
 import yfinance as yf
 import pandas as pd
 import plotly.graph_objects as go
-import time
+from streamlit_autorefresh import st_autorefresh
 
 st.set_page_config(layout="wide")
 st.title("Trading Dashboard PRO")
 
-# Auto Refresh alle 60 Sekunden
-refresh_rate = 30
-
-if "last_refresh" not in st.session_state:
-    st.session_state.last_refresh = time.time()
-
-if time.time() - st.session_state.last_refresh > refresh_rate:
-    st.session_state.last_refresh = time.time()
-    st.rerun()
+# Auto Refresh
+st_autorefresh(interval=30000, key="datarefresh")
 
 # -----------------------
 # SIDEBAR
@@ -23,10 +16,7 @@ if time.time() - st.session_state.last_refresh > refresh_rate:
 
 st.sidebar.header("Market")
 
-symbol = st.sidebar.text_input(
-    "Ticker",
-    value="BTC-USD"
-).upper()
+symbol = st.sidebar.text_input("Ticker", value="BTC-USD").upper()
 
 period = st.sidebar.selectbox(
     "Period",
@@ -60,6 +50,7 @@ show_sweeps = st.sidebar.checkbox("Liquidity Sweeps",False)
 show_orderblocks = st.sidebar.checkbox("Orderblocks",False)
 
 show_vwap = st.sidebar.checkbox("VWAP", True)
+show_vwap_bands = st.sidebar.checkbox("VWAP Bands", True)
 
 # -----------------------
 # INDICATORS
@@ -69,8 +60,6 @@ st.sidebar.header("Indicators")
 
 show_rsi = st.sidebar.checkbox("RSI",True)
 show_macd = st.sidebar.checkbox("MACD",True)
-
-
 
 # -----------------------
 # ANALYSIS
@@ -91,10 +80,10 @@ show_scanner = st.sidebar.checkbox("Momentum Scanner",True)
 show_mtf = st.sidebar.checkbox("Multi Timeframe",False)
 
 # -----------------------
-# LOAD DATA
+# DATA
 # -----------------------
 
-@st.cache_data(ttl=300)
+@st.cache_data(ttl=30)
 def load_data(symbol,period,interval):
 
     df = yf.download(symbol,period=period,interval=interval, progress=False)
@@ -103,16 +92,17 @@ def load_data(symbol,period,interval):
         df.columns = df.columns.get_level_values(0)
 
     df = df.dropna()
-    st.write("Rows:", len(df))
-    st.write(df.tail())
     return df
-
-
 
 df = load_data(symbol,period,interval)
 
-if len(df)==0:
+if len(df) == 0:
     st.stop()
+
+# Performance Limit
+max_bars = 500
+if len(df) > max_bars:
+    df = df.tail(max_bars)
 
 # -----------------------
 # INDICATORS
@@ -125,9 +115,7 @@ df["EMA200"] = df["Close"].ewm(span=200).mean()
 df["SMA50"] = df["Close"].rolling(50).mean()
 
 # RSI
-
 delta = df["Close"].diff()
-
 gain = delta.clip(lower=0)
 loss = -delta.clip(upper=0)
 
@@ -135,11 +123,9 @@ avg_gain = gain.rolling(14).mean()
 avg_loss = loss.rolling(14).mean()
 
 rs = avg_gain/avg_loss
-
 df["RSI"] = 100-(100/(1+rs))
 
 # MACD
-
 ema12 = df["Close"].ewm(span=12).mean()
 ema26 = df["Close"].ewm(span=26).mean()
 
@@ -148,27 +134,19 @@ df["MACD_signal"] = df["MACD"].ewm(span=9).mean()
 df["MACD_hist"] = df["MACD"] - df["MACD_signal"]
 
 # VWAP
-typical_price = (df["High"] + df["Low"] + df["Close"]) / 3
-vwap = (typical_price * df["Volume"]).cumsum() / df["Volume"].cumsum()
+df["VWAP"] = (df["Close"] * df["Volume"]).cumsum() / df["Volume"].cumsum()
 
-df["VWAP"] = vwap
+# VWAP Bands
+vwap_std = (df["Close"] - df["VWAP"]).rolling(20).std()
 
-# -----------------------
-# CURRENT INDICATOR VALUES
-# -----------------------
+df["VWAP_upper1"] = df["VWAP"] + vwap_std
+df["VWAP_lower1"] = df["VWAP"] - vwap_std
 
-ema20_last = df["EMA20"].iloc[-1]
-ema50_last = df["EMA50"].iloc[-1]
-ema200_last = df["EMA200"].iloc[-1]
-
-rsi_last = df["RSI"].iloc[-1]
-
-macd_last = df["MACD"].iloc[-1]
-macd_signal_last = df["MACD_signal"].iloc[-1]
-macd_hist_last = df["MACD_hist"].iloc[-1]
+df["VWAP_upper2"] = df["VWAP"] + vwap_std*2
+df["VWAP_lower2"] = df["VWAP"] - vwap_std*2
 
 # -----------------------
-# SUPPORT / RESISTANCE
+# SUPPORT RESISTANCE
 # -----------------------
 
 def detect_levels(df,window=10):
@@ -189,128 +167,53 @@ def detect_levels(df,window=10):
 
     return supports,resistances
 
-
 supports,resistances = detect_levels(df)
 
 # -----------------------
-# LIQUIDITY SWEEPS
+# ALERTS
 # -----------------------
 
-def detect_sweeps(df):
+def check_alerts(df):
 
-    sweeps=[]
+    price = df["Close"].iloc[-1]
+    upper = df["VWAP_upper2"].iloc[-1]
+    lower = df["VWAP_lower2"].iloc[-1]
 
-    highs=df["High"].to_numpy()
-    lows=df["Low"].to_numpy()
-    closes=df["Close"].to_numpy()
+    alerts = []
 
-    for i in range(2,len(df)):
+    if price > upper:
+        alerts.append("Price ABOVE VWAP +2")
 
-        if highs[i] > highs[i-1] and closes[i] < highs[i-1]:
-            sweeps.append(("bearish",i))
+    if price < lower:
+        alerts.append("Price BELOW VWAP -2")
 
-        if lows[i] < lows[i-1] and closes[i] > lows[i-1]:
-            sweeps.append(("bullish",i))
+    return alerts
 
-    return sweeps
-
-
-sweeps = detect_sweeps(df)
+alerts = check_alerts(df)
 
 # -----------------------
-# ORDERBLOCKS
+# PRICE
 # -----------------------
 
-def detect_orderblocks(df):
+current = df["Close"].iloc[-1]
+prev = df["Close"].iloc[-2]
 
-    blocks=[]
+change = current-prev
+change_percent = (change/prev)*100
 
-    open_=df["Open"].to_numpy()
-    close=df["Close"].to_numpy()
-    high=df["High"].to_numpy()
-    low=df["Low"].to_numpy()
+vwap_last = df["VWAP"].iloc[-1]
+rsi_last = df["RSI"].iloc[-1]
 
-    for i in range(1,len(df)):
+col1,col2,col3 = st.columns(3)
 
-        body=abs(close[i]-open_[i])
-        prev_body=abs(close[i-1]-open_[i-1])
+with col1:
+    st.metric("Price",f"{current:.2f}",f"{change:.2f} ({change_percent:.2f}%)")
 
-        if body>prev_body*2:
+with col2:
+    st.metric("VWAP",f"{vwap_last:.2f}")
 
-            if close[i]>open_[i]:
-                blocks.append(("bullish",low[i-1]))
-
-            if close[i]<open_[i]:
-                blocks.append(("bearish",high[i-1]))
-
-    return blocks
-
-
-orderblocks = detect_orderblocks(df)
-
-# -----------------------
-# TREND SCORE
-# -----------------------
-
-def trend_strength(df):
-
-    score=0
-
-    closes=df["Close"].to_numpy()
-    ema50=df["EMA50"].to_numpy()
-    ema200=df["EMA200"].to_numpy()
-
-    if closes[-1] > ema50[-1]:
-        score += 1
-
-    if ema50[-1] > ema200[-1]:
-        score += 1
-
-    momentum = ((closes[-1]-closes[-5])/closes[-5])*100
-
-    if momentum > 5:
-        score += 1
-
-    if momentum < -5:
-        score -= 1
-
-    return score
-
-
-score = trend_strength(df)
-
-# -----------------------
-# TRADE SIGNAL
-# -----------------------
-
-def trade_signal(df):
-
-    price=df["Close"].iloc[-1]
-    ema50=df["EMA50"].iloc[-1]
-    rsi=df["RSI"].iloc[-1]
-
-    if price > ema50 and rsi < 35:
-        return "LONG SETUP"
-
-    if price < ema50 and rsi > 65:
-        return "SHORT SETUP"
-
-    return "NO SIGNAL"
-
-
-signal = trade_signal(df)
-
-# -----------------------
-# PRICE INFO
-# -----------------------
-
-current=df["Close"].iloc[-1]
-prev=df["Close"].iloc[-2]
-
-change=current-prev
-change_percent=(change/prev)*100
-
-st.metric("Price",f"{current:.2f}",f"{change:.2f} ({change_percent:.2f}%)")
+with col3:
+    st.metric("RSI",f"{rsi_last:.2f}")
 
 # -----------------------
 # CHART
@@ -330,63 +233,40 @@ if show_candles:
     ))
 
 if show_ema20:
-    fig.add_trace(go.Scatter(x=df.index,y=df["EMA20"],name="EMA20"))
+    fig.add_trace(go.Scattergl(x=df.index,y=df["EMA20"],name="EMA20"))
 
 if show_ema50:
-    fig.add_trace(go.Scatter(x=df.index,y=df["EMA50"],name="EMA50"))
+    fig.add_trace(go.Scattergl(x=df.index,y=df["EMA50"],name="EMA50"))
 
 if show_ema200:
-    fig.add_trace(go.Scatter(x=df.index,y=df["EMA200"],name="EMA200"))
+    fig.add_trace(go.Scattergl(x=df.index,y=df["EMA200"],name="EMA200"))
 
 if show_sma:
-    fig.add_trace(go.Scatter(x=df.index,y=df["SMA50"],name="SMA50"))
+    fig.add_trace(go.Scattergl(x=df.index,y=df["SMA50"],name="SMA50"))
 
-# Support
+if show_vwap:
+    fig.add_trace(go.Scattergl(
+        x=df.index,
+        y=df["VWAP"],
+        name="VWAP",
+        line=dict(color="orange")
+    ))
+
+if show_vwap_bands:
+
+    fig.add_trace(go.Scattergl(x=df.index,y=df["VWAP_upper1"],name="VWAP +1",line=dict(dash="dot")))
+    fig.add_trace(go.Scattergl(x=df.index,y=df["VWAP_lower1"],name="VWAP -1",line=dict(dash="dot")))
+
+    fig.add_trace(go.Scattergl(x=df.index,y=df["VWAP_upper2"],name="VWAP +2",line=dict(dash="dot")))
+    fig.add_trace(go.Scattergl(x=df.index,y=df["VWAP_lower2"],name="VWAP -2",line=dict(dash="dot")))
+
 if show_support:
-    for s in supports:
+    for s in supports[-5:]:
         fig.add_hline(y=s,line_dash="dot",line_color="green")
 
-# Resistance
 if show_resistance:
-    for r in resistances:
+    for r in resistances[-5:]:
         fig.add_hline(y=r,line_dash="dot",line_color="red")
-
-# Liquidity Sweeps
-if show_sweeps:
-
-    for s in sweeps:
-
-        idx=s[1]
-
-        if s[0]=="bullish":
-
-            fig.add_trace(go.Scatter(
-                x=[df.index[idx]],
-                y=[df["Low"].iloc[idx]],
-                mode="markers",
-                marker=dict(size=10,color="green"),
-                name="Bull Sweep"
-            ))
-
-        if s[0]=="bearish":
-
-            fig.add_trace(go.Scatter(
-                x=[df.index[idx]],
-                y=[df["High"].iloc[idx]],
-                mode="markers",
-                marker=dict(size=10,color="red"),
-                name="Bear Sweep"
-            ))
-            
-        if show_vwap:
-            fig.add_trace(
-                go.Scatter(
-                    x=df.index,
-                    y=df["VWAP"],
-                    name="VWAP",
-                    line=dict(color="orange", width=2)
-                )
-            )    
 
 fig.update_layout(
     height=900,
@@ -398,151 +278,23 @@ fig.update_layout(
 st.plotly_chart(fig,use_container_width=True)
 
 # -----------------------
-# SUPPORT / RESISTANCE TABLE
+# ALERT DISPLAY
 # -----------------------
 
-st.subheader("Support & Resistance Levels")
+if alerts:
 
-levels=[]
+    st.subheader("Alerts")
 
-for s in supports[-5:]:
-    levels.append(("Support",round(s,2)))
-
-for r in resistances[-5:]:
-    levels.append(("Resistance",round(r,2)))
-
-levels_df=pd.DataFrame(levels,columns=["Type","Price"])
-
-st.dataframe(levels_df,use_container_width=True)
+    for a in alerts:
+        st.warning(a)
 
 # -----------------------
-# VOLUME
+# SCANNER
 # -----------------------
 
-if show_volume:
-
-    st.subheader("Volume")
-
-    vol_fig = go.Figure()
-
-    vol_fig.add_trace(go.Bar(
-        x=df.index,
-        y=df["Volume"]
-    ))
-
-    vol_fig.update_layout(template="plotly_dark")
-
-    st.plotly_chart(vol_fig,use_container_width=True)
-
-# -----------------------
-# RSI
-# -----------------------
-
-if show_rsi:
-
-    st.subheader("RSI")
-
-    rsi_fig = go.Figure()
-
-    rsi_fig.add_trace(go.Scatter(x=df.index,y=df["RSI"]))
-
-    rsi_fig.add_hline(y=70)
-    rsi_fig.add_hline(y=30)
-
-    rsi_fig.update_layout(template="plotly_dark")
-
-    st.plotly_chart(rsi_fig,use_container_width=True)
-
-# -----------------------
-# MACD
-# -----------------------
-
-if show_macd:
-
-    st.subheader("MACD")
-
-    macd_fig = go.Figure()
-
-    macd_fig.add_trace(go.Scatter(
-        x=df.index,
-        y=df["MACD"],
-        name="MACD"
-    ))
-
-    macd_fig.add_trace(go.Scatter(
-        x=df.index,
-        y=df["MACD_signal"],
-        name="Signal"
-    ))
-
-    macd_fig.add_trace(go.Bar(
-        x=df.index,
-        y=df["MACD_hist"],
-        name="Histogram"
-    ))
-
-    macd_fig.update_layout(template="plotly_dark")
-
-    st.plotly_chart(macd_fig,use_container_width=True)
-    
-    # -----------------------
-# INDICATOR VALUES PANEL
-# -----------------------
-
-st.subheader("Indicator Values")
-
-col1,col2,col3,col4 = st.columns(4)
-
-vwap_last = df["VWAP"].iloc[-1]
-    
-with col1:
-    st.metric("EMA20",f"{ema20_last:.2f}")
-    st.metric("EMA50",f"{ema50_last:.2f}")
-    st.metric("EMA200",f"{ema200_last:.2f}")
-
-with col2:
-    st.metric("RSI",f"{rsi_last:.2f}")
-    st.metric("VWAP",f"{vwap_last:.2f}")
-
-with col3:
-    st.metric("MACD",f"{macd_last:.2f}")
-    st.metric("Signal",f"{macd_signal_last:.2f}")
-
-with col4:
-    st.metric("MACD Histogram",f"{macd_hist_last:.2f}")
-
-# -----------------------
-# ANALYSIS
-# -----------------------
-
-if show_trend:
-
-    st.subheader("Market Analysis")
-
-    st.write("Trend Score:",score)
-    st.write("Liquidity Sweeps:",len(sweeps))
-    st.write("Orderblocks:",len(orderblocks))
-
-# -----------------------
-# SIGNAL
-# -----------------------
-
-if show_signals:
-
-    st.subheader("Trade Signal")
-
-    if signal=="LONG SETUP":
-        st.success(signal)
-
-    elif signal=="SHORT SETUP":
-        st.error(signal)
-
-    else:
-        st.info(signal)
-
-# -----------------------
-# MOMENTUM SCANNER
-# -----------------------
+@st.cache_data(ttl=300)
+def load_scanner(asset):
+    return yf.download(asset,period="1mo",interval="1d")
 
 if show_scanner:
 
@@ -554,7 +306,7 @@ if show_scanner:
 
     for a in assets:
 
-        d=yf.download(a,period="1mo",interval="1d")
+        d = load_scanner(a)
 
         if len(d)<20:
             continue
@@ -568,32 +320,3 @@ if show_scanner:
     scanner=pd.DataFrame(data,columns=["Asset","Momentum %"])
 
     st.dataframe(scanner)
-
-# -----------------------
-# MULTI TIMEFRAME
-# -----------------------
-
-if show_mtf:
-
-    st.subheader("Multi Timeframe Analysis")
-
-    timeframes=["1h","4h","1d"]
-
-    results=[]
-
-    for tf in timeframes:
-
-        d=yf.download(symbol,period="1mo",interval=tf)
-
-        if len(d) < 10:
-            continue
-
-        close=d["Close"].to_numpy().flatten()
-
-        momentum=((close[-1]-close[-10])/close[-10])*100
-
-        results.append((tf,round(momentum,2)))
-
-    tf_df=pd.DataFrame(results,columns=["Timeframe","Momentum"])
-
-    st.dataframe(tf_df)
