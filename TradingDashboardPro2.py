@@ -87,6 +87,34 @@ df["VWAP_upper2"] = df["VWAP"] + 2*vwap_dev
 df["VWAP_lower2"] = df["VWAP"] - 2*vwap_dev
 
 # -----------------------
+# PRICE METRICS
+# -----------------------
+
+current = df["Close"].iloc[-1]
+prev = df["Close"].iloc[-2]
+
+change = current - prev
+change_percent = (change / prev) * 100
+
+vwap_last = df["VWAP"].iloc[-1]
+rsi_last = df["RSI"].iloc[-1]
+
+col1, col2, col3 = st.columns(3)
+
+with col1:
+    st.metric("Price", f"{current:.2f}", f"{change:.2f} ({change_percent:.2f}%)")
+
+with col2:
+    st.metric("VWAP", f"{vwap_last:.2f}")
+
+with col3:
+    st.metric("RSI", f"{rsi_last:.2f}")
+    
+delta_color = "normal" if change >= 0 else "inverse"
+
+st.metric("Price", f"{current:.2f}", f"{change:.2f} ({change_percent:.2f}%)", delta_color=delta_color)    
+
+# -----------------------
 # SUPPORT / RESISTANCE
 # -----------------------
 
