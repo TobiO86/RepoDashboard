@@ -102,7 +102,8 @@ rsi_last = df["RSI"].iloc[-1]
 col1, col2, col3 = st.columns(3)
 
 with col1:
-    st.metric("Price", f"{current:.2f}", f"{change:.2f} ({change_percent:.2f}%)")
+    delta_color = "normal" if change >= 0 else "inverse"
+    st.metric("Price", f"{current:.2f}", f"{change:.2f} ({change_percent:.2f}%)", delta_color=delta_color)   
 
 with col2:
     st.metric("VWAP", f"{vwap_last:.2f}")
@@ -110,9 +111,7 @@ with col2:
 with col3:
     st.metric("RSI", f"{rsi_last:.2f}")
     
-delta_color = "normal" if change >= 0 else "inverse"
-
-st.metric("Price", f"{current:.2f}", f"{change:.2f} ({change_percent:.2f}%)", delta_color=delta_color)    
+ 
 
 # -----------------------
 # SUPPORT / RESISTANCE
