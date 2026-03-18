@@ -10,7 +10,7 @@ import requests
 st.set_page_config(layout="wide")
 st.title("Trading Dashboard PRO")
 
-st_autorefresh(interval=30000, key="datarefresh")
+st_autorefresh(interval=10000, key="datarefresh")
 
 # -----------------------
 # SIDEBAR
@@ -28,7 +28,7 @@ show_macd = st.sidebar.checkbox("MACD", True)
 # DATA
 # -----------------------
 
-@st.cache_data(ttl=30)
+@st.cache_data(ttl=10)
 def load_data(symbol,period,interval):
     df = yf.download(symbol,period=period,interval=interval, progress=False)
     if isinstance(df.columns,pd.MultiIndex):
@@ -39,7 +39,7 @@ df = load_data(symbol,period,interval)
 if len(df) == 0:
     st.stop()
 
-df = df.tail(500)
+df = df.tail(100)
 
 # -----------------------
 # MTF
@@ -54,9 +54,9 @@ def load_mtf(symbol):
 df_5m, df_15m = load_mtf(symbol)
 
 def mtf_bias(df):
-    df["EMA20"] = df["Close"].ewm(span=20).mean()
-    df["EMA50"] = df["Close"].ewm(span=50).mean()
-    return "bull" if df["EMA20"].iloc[-1] > df["EMA50"].iloc[-1] else "bear"
+    ema20 = df["Close"].ewm(span=20).mean()
+    ema50 = df["Close"].ewm(span=50).mean()
+    return "bull" if ema20.iloc[-1] > ema50.iloc[-1] else "bear"
 
 bias_5m = mtf_bias(df_5m)
 bias_15m = mtf_bias(df_15m)
@@ -95,6 +95,21 @@ df["VWAP_upper2"] = df["VWAP"] + 2*vwap_dev
 df["VWAP_lower2"] = df["VWAP"] - 2*vwap_dev
 
 # -----------------------
+# BOLLINGER BANDS
+# -----------------------
+
+bb_period = 20
+bb_std = 2
+
+df["BB_MID"] = df["Close"].rolling(bb_period).mean()
+df["BB_STD"] = df["Close"].rolling(bb_period).std()
+
+df["BB_UPPER"] = df["BB_MID"] + bb_std * df["BB_STD"]
+df["BB_LOWER"] = df["BB_MID"] - bb_std * df["BB_STD"]
+
+# Bollinger Squeeze
+df["BB_WIDTH"] = df["BB_UPPER"] - df["BB_LOWER"]
+# -----------------------
 # DELTA
 # -----------------------
 
@@ -115,8 +130,8 @@ df["sweep_low"] = df["Low"] < df["low_min"].shift(1)
 df["vol_mean"] = df["Volume"].rolling(20).mean()
 df["vol_spike"] = df["Volume"] > df["vol_mean"] * 1.5
 
-df["LongSignal"] = False
-df["ShortSignal"] = False
+df["LongScore"] = 0
+df["ShortScore"] = 0
 
 vol_avg = df["Volume"].rolling(20).mean()
 
@@ -132,8 +147,11 @@ for i in range(2, len(df)):
     if bias_15m == "bull": score_long += 1
     if curr["delta"] > -vol_avg.iloc[i]: score_long += 1
 
-    if score_long >= 4:
-        df.at[df.index[i], "LongSignal"] = True
+    # 🔥 Liquidity Boost
+    if prev["sweep_low"] and curr["Close"] > curr["VWAP"]:
+        score_long += 2
+
+    df.at[df.index[i], "LongScore"] = score_long
 
     score_short = 0
     if prev["sweep_high"]: score_short += 1
@@ -143,8 +161,41 @@ for i in range(2, len(df)):
     if bias_15m == "bear": score_short += 1
     if curr["delta"] < vol_avg.iloc[i]: score_short += 1
 
-    if score_short >= 4:
-        df.at[df.index[i], "ShortSignal"] = True
+    # 🔥 Liquidity Boost
+    if prev["sweep_high"] and curr["Close"] < curr["VWAP"]:
+        score_short += 2
+
+    df.at[df.index[i], "ShortScore"] = score_short
+
+# -----------------------
+# HIGH PROBABILITY FILTER
+# -----------------------
+
+HIGH_PROB_MODE = True
+SCORE_THRESHOLD = 5
+
+df["LongSignal"] = False
+df["ShortSignal"] = False
+
+for i in range(len(df)):
+
+    if HIGH_PROB_MODE:
+        if df["LongScore"].iloc[i] >= SCORE_THRESHOLD:
+            df.at[df.index[i], "LongSignal"] = True
+
+        if df["ShortScore"].iloc[i] >= SCORE_THRESHOLD:
+            df.at[df.index[i], "ShortSignal"] = True
+
+    else:
+        if df["LongScore"].iloc[i] >= 4:
+            df.at[df.index[i], "LongSignal"] = True
+
+        if df["ShortScore"].iloc[i] >= 4:
+            df.at[df.index[i], "ShortSignal"] = True
+
+# -----------------------
+# SL / TP
+# -----------------------
 
 # -----------------------
 # SL / TP
@@ -210,8 +261,8 @@ def clean_levels(levels,threshold=0.005):
     return filtered
 
 supports,resistances = detect_levels(df)
-supports = clean_levels(supports)
-resistances = clean_levels(resistances)
+supports = clean_levels(supports)[-5:]
+resistances = clean_levels(resistances)[-5:]
 
 # -----------------------
 # SUBPLOTS (FIXED UI)
@@ -273,6 +324,53 @@ fig.add_trace(go.Scatter(x=df.index,y=df["VWAP"],name="VWAP"),row=price_row,col=
 fig.add_trace(go.Scatter(x=df.index,y=df["VWAP_upper2"],name="VWAP +2"),row=price_row,col=1)
 fig.add_trace(go.Scatter(x=df.index,y=df["VWAP_lower2"],name="VWAP -2"),row=price_row,col=1)
 
+# -----------------------
+# SUPPORT / RESISTANCE LINES
+# -----------------------
+
+for s in supports[-5:]:
+    fig.add_hline(
+        y=s,
+        line_dash="dot",
+        opacity=0.4,
+        row=price_row,
+        col=1
+    )
+
+for r in resistances[-5:]:
+    fig.add_hline(
+        y=r,
+        line_dash="dot",
+        opacity=0.4,
+        row=price_row,
+        col=1
+    )
+    
+# -----------------------
+# BOLLINGER BANDS PLOT
+# -----------------------
+
+fig.add_trace(go.Scatter(
+    x=df.index,
+    y=df["BB_UPPER"],
+    name="BB Upper",
+    line=dict(width=1, dash="dot")
+), row=price_row, col=1)
+
+fig.add_trace(go.Scatter(
+    x=df.index,
+    y=df["BB_LOWER"],
+    name="BB Lower",
+    line=dict(width=1, dash="dot")
+), row=price_row, col=1)
+
+fig.add_trace(go.Scatter(
+    x=df.index,
+    y=df["BB_MID"],
+    name="BB Mid",
+    line=dict(width=1)
+), row=price_row, col=1)    
+
 # SIGNALS
 longs = df[df["LongSignal"]]
 shorts = df[df["ShortSignal"]]
@@ -289,6 +387,20 @@ fig.add_trace(go.Scatter(
     mode="markers",
     marker=dict(symbol="triangle-down", size=12),
     name="SHORT"
+), row=price_row, col=1)
+
+fig.add_trace(go.Scatter(
+    x=df.index,
+    y=df["LongScore"],
+    name="Long Score",
+    line=dict(width=1, dash="dot")
+), row=price_row, col=1)
+
+fig.add_trace(go.Scatter(
+    x=df.index,
+    y=df["ShortScore"],
+    name="Short Score",
+    line=dict(width=1, dash="dot")
 ), row=price_row, col=1)
 
 # -----------------------
@@ -406,17 +518,25 @@ elif df["ShortSignal"].iloc[-1]:
 # Nur senden wenn neues Signal
 if current_signal and current_signal != st.session_state.last_signal:
     
+    sl = df["SL"].iloc[-1]
+    tp = df["TP"].iloc[-1]
+
+    sl_text = f"{sl:.2f}" if not np.isnan(sl) else "-"
+    tp_text = f"{tp:.2f}" if not np.isnan(tp) else "-"
+
+    score = df["LongScore"].iloc[-1] if df["LongSignal"].iloc[-1] else df["ShortScore"].iloc[-1]
+
     message = f"""
-{symbol} SIGNAL
+    {symbol} SIGNAL
 
-{current_signal}
+    {current_signal}
+    Score: {score}/8
 
-VWAP: {df['VWAP'].iloc[-1]:.2f}
-RSI: {df['RSI'].iloc[-1]:.2f}
+    VWAP: {df['VWAP'].iloc[-1]:.2f}
+    RSI: {df['RSI'].iloc[-1]:.2f}
 
-SL: {df['SL'].iloc[-1]:.2f}
-TP: {df['TP'].iloc[-1]:.2f}
-"""
-    
+    SL: {sl_text}
+    TP: {tp_text}
+    """ 
     send_telegram(message)
     st.session_state.last_signal = current_signal
