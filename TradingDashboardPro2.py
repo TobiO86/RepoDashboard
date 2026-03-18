@@ -542,7 +542,7 @@ fig.update_layout(
     height=1100,  # 👈 größer!
     template="plotly_dark",
     hovermode="x unified",
-    xaxis_rangeslider_visible=False
+    xaxis_rangeslider_visible=False,
     uirevision=f"{symbol}_{interval}"
 )
 
