@@ -10,7 +10,7 @@ import requests
 st.set_page_config(layout="wide")
 st.title("Trading Dashboard PRO")
 
-st_autorefresh(interval=10000, key="datarefresh")
+st_autorefresh(interval=5000, key="datarefresh")
 
 # -----------------------
 # SIDEBAR
@@ -28,7 +28,7 @@ show_macd = st.sidebar.checkbox("MACD", True)
 # DATA
 # -----------------------
 
-@st.cache_data(ttl=10)
+@st.cache_data(ttl=5)
 def load_data(symbol,period,interval):
     df = yf.download(symbol,period=period,interval=interval, progress=False)
     if isinstance(df.columns,pd.MultiIndex):
