@@ -354,3 +354,69 @@ fig.update_layout(
 )
 
 st.plotly_chart(fig, use_container_width=True)
+
+# -----------------------
+# ALERT / SIGNAL OUTPUT
+# -----------------------
+
+last_long = df["LongSignal"].iloc[-1]
+last_short = df["ShortSignal"].iloc[-1]
+
+if last_long:
+    st.success("🚀 SMART LONG (Score-based Setup)")
+elif last_short:
+    st.error("🔻 SMART SHORT (Score-based Setup)")
+else:
+    st.info("NO HIGH PROBABILITY SETUP")
+    
+# -----------------------
+# TELEGRAM ALERTS
+# -----------------------
+
+def send_telegram(msg):
+    TOKEN = "DEIN_TELEGRAM_BOT_TOKEN"
+    CHAT_ID = "DEINE_CHAT_ID"
+    
+    url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
+    
+    try:
+        requests.post(url, data={
+            "chat_id": CHAT_ID,
+            "text": msg
+        })
+    except Exception as e:
+        print("Telegram Error:", e)
+
+# -----------------------
+# ANTI-SPAM LOGIK
+# -----------------------
+
+if "last_signal" not in st.session_state:
+    st.session_state.last_signal = None
+
+current_signal = None
+current_price = df["Close"].iloc[-1]
+
+if df["LongSignal"].iloc[-1]:
+    current_signal = f"🚀 LONG @ {current_price:.2f}"
+
+elif df["ShortSignal"].iloc[-1]:
+    current_signal = f"🔻 SHORT @ {current_price:.2f}"
+
+# Nur senden wenn neues Signal
+if current_signal and current_signal != st.session_state.last_signal:
+    
+    message = f"""
+{symbol} SIGNAL
+
+{current_signal}
+
+VWAP: {df['VWAP'].iloc[-1]:.2f}
+RSI: {df['RSI'].iloc[-1]:.2f}
+
+SL: {df['SL'].iloc[-1]:.2f}
+TP: {df['TP'].iloc[-1]:.2f}
+"""
+    
+    send_telegram(message)
+    st.session_state.last_signal = current_signal
