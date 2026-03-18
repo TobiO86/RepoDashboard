@@ -5,6 +5,7 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from streamlit_autorefresh import st_autorefresh
 import numpy as np
+import requests
 
 st.set_page_config(layout="wide")
 st.title("Trading Dashboard PRO")
@@ -18,10 +19,6 @@ st_autorefresh(interval=30000, key="datarefresh")
 symbol = st.sidebar.text_input("Ticker", value="BTC-USD").upper()
 period = st.sidebar.selectbox("Period", ["5d","1mo","3mo","6mo","1y"])
 interval = st.sidebar.selectbox("Timeframe", ["15m","1h","4h","1d"])
-
-# -----------------------
-# OPTIONS
-# -----------------------
 
 show_volume = st.sidebar.checkbox("Volume", True)
 show_rsi = st.sidebar.checkbox("RSI", True)
@@ -45,26 +42,42 @@ if len(df) == 0:
 df = df.tail(500)
 
 # -----------------------
+# MTF
+# -----------------------
+
+@st.cache_data(ttl=30)
+def load_mtf(symbol):
+    df_5m = yf.download(symbol, period="2d", interval="5m", progress=False)
+    df_15m = yf.download(symbol, period="5d", interval="15m", progress=False)
+    return df_5m.dropna(), df_15m.dropna()
+
+df_5m, df_15m = load_mtf(symbol)
+
+def mtf_bias(df):
+    df["EMA20"] = df["Close"].ewm(span=20).mean()
+    df["EMA50"] = df["Close"].ewm(span=50).mean()
+    return "bull" if df["EMA20"].iloc[-1] > df["EMA50"].iloc[-1] else "bear"
+
+bias_5m = mtf_bias(df_5m)
+bias_15m = mtf_bias(df_15m)
+
+# -----------------------
 # INDICATORS
 # -----------------------
 
-# EMA
 df["EMA20"] = df["Close"].ewm(span=20).mean()
 df["EMA50"] = df["Close"].ewm(span=50).mean()
 
-# RSI (EMA based)
-window = 14
 delta = df["Close"].diff()
-gain = delta.where(delta > 0, 0)
-loss = -delta.where(delta < 0, 0)
+gain = delta.clip(lower=0)
+loss = -delta.clip(upper=0)
 
-avg_gain = gain.ewm(alpha=1/window, min_periods=window).mean()
-avg_loss = loss.ewm(alpha=1/window, min_periods=window).mean()
+avg_gain = gain.ewm(alpha=1/14).mean()
+avg_loss = loss.ewm(alpha=1/14).mean()
 
 rs = avg_gain / avg_loss.replace(0,1e-10)
 df["RSI"] = 100 - (100 / (1 + rs))
 
-# MACD
 ema12 = df["Close"].ewm(span=12).mean()
 ema26 = df["Close"].ewm(span=26).mean()
 
@@ -72,15 +85,9 @@ df["MACD"] = ema12 - ema26
 df["MACD_signal"] = df["MACD"].ewm(span=9).mean()
 df["MACD_hist"] = df["MACD"] - df["MACD_signal"]
 
-# VWAP (SESSION)
 df["Date"] = df.index.date
-df["VWAP"] = (
-    (df["Close"] * df["Volume"]).groupby(df["Date"]).cumsum()
-    /
-    df["Volume"].groupby(df["Date"]).cumsum()
-)
+df["VWAP"] = (df["Close"]*df["Volume"]).groupby(df["Date"]).cumsum() / df["Volume"].groupby(df["Date"]).cumsum()
 
-# VWAP Bands
 typical_price = (df["High"] + df["Low"] + df["Close"]) / 3
 vwap_dev = (typical_price - df["VWAP"]).rolling(20).std()
 
@@ -88,10 +95,16 @@ df["VWAP_upper2"] = df["VWAP"] + 2*vwap_dev
 df["VWAP_lower2"] = df["VWAP"] - 2*vwap_dev
 
 # -----------------------
-# SMART MONEY / ORDERFLOW LOGIC
+# DELTA
 # -----------------------
 
-# Liquidity Sweep
+df["delta"] = np.where(df["Close"] > df["Open"], df["Volume"], -df["Volume"])
+df["cum_delta"] = df["delta"].cumsum()
+
+# -----------------------
+# SMART MONEY (FIXED)
+# -----------------------
+
 lookback = 20
 df["high_max"] = df["High"].rolling(lookback).max()
 df["low_min"] = df["Low"].rolling(lookback).min()
@@ -99,60 +112,60 @@ df["low_min"] = df["Low"].rolling(lookback).min()
 df["sweep_high"] = df["High"] > df["high_max"].shift(1)
 df["sweep_low"] = df["Low"] < df["low_min"].shift(1)
 
-# Volume Spike
 df["vol_mean"] = df["Volume"].rolling(20).mean()
 df["vol_spike"] = df["Volume"] > df["vol_mean"] * 1.5
 
-# Reclaim / Rejection Logik
 df["LongSignal"] = False
 df["ShortSignal"] = False
+
+vol_avg = df["Volume"].rolling(20).mean()
 
 for i in range(2, len(df)):
     prev = df.iloc[i-1]
     curr = df.iloc[i]
 
-    # LONG: Sweep unten + Reclaim + über VWAP
-    if (
-        prev["sweep_low"] and
-        curr["Close"] > prev["Low"] and
-        curr["Close"] > curr["VWAP"] and
-        curr["vol_spike"]
-    ):
+    score_long = 0
+    if prev["sweep_low"]: score_long += 1
+    if curr["Close"] > curr["VWAP"]: score_long += 1
+    if curr["vol_spike"]: score_long += 1
+    if bias_5m == "bull": score_long += 1
+    if bias_15m == "bull": score_long += 1
+    if curr["delta"] > -vol_avg.iloc[i]: score_long += 1
+
+    if score_long >= 4:
         df.at[df.index[i], "LongSignal"] = True
 
-    # SHORT: Sweep oben + Rejection + unter VWAP
-    if (
-        prev["sweep_high"] and
-        curr["Close"] < prev["High"] and
-        curr["Close"] < curr["VWAP"] and
-        curr["vol_spike"]
-    ):
+    score_short = 0
+    if prev["sweep_high"]: score_short += 1
+    if curr["Close"] < curr["VWAP"]: score_short += 1
+    if curr["vol_spike"]: score_short += 1
+    if bias_5m == "bear": score_short += 1
+    if bias_15m == "bear": score_short += 1
+    if curr["delta"] < vol_avg.iloc[i]: score_short += 1
+
+    if score_short >= 4:
         df.at[df.index[i], "ShortSignal"] = True
 
-
 # -----------------------
-# SL / TP BERECHNUNG
+# SL / TP
 # -----------------------
 
 df["SL"] = np.nan
 df["TP"] = np.nan
 
 for i in range(1, len(df)):
-    # LONG
     if df["LongSignal"].iloc[i]:
         sl = df["Low"].iloc[i-1]
         entry = df["Close"].iloc[i]
-
         df.at[df.index[i], "SL"] = sl
         df.at[df.index[i], "TP"] = entry + (entry - sl) * 2
 
-    # SHORT
     if df["ShortSignal"].iloc[i]:
         sl = df["High"].iloc[i-1]
         entry = df["Close"].iloc[i]
-
         df.at[df.index[i], "SL"] = sl
         df.at[df.index[i], "TP"] = entry - (sl - entry) * 2
+
 # -----------------------
 # PRICE METRICS
 # -----------------------
@@ -168,17 +181,9 @@ rsi_last = df["RSI"].iloc[-1]
 
 col1, col2, col3 = st.columns(3)
 
-with col1:
-    delta_color = "normal" if change >= 0 else "inverse"
-    st.metric("Price", f"{current:.2f}", f"{change:.2f} ({change_percent:.2f}%)", delta_color=delta_color)   
-
-with col2:
-    st.metric("VWAP", f"{vwap_last:.2f}")
-
-with col3:
-    st.metric("RSI", f"{rsi_last:.2f}")
-    
- 
+col1.metric("Price", f"{current:.2f}", f"{change:.2f} ({change_percent:.2f}%)")
+col2.metric("VWAP", f"{vwap_last:.2f}")
+col3.metric("RSI", f"{rsi_last:.2f}")
 
 # -----------------------
 # SUPPORT / RESISTANCE
@@ -209,26 +214,6 @@ supports = clean_levels(supports)
 resistances = clean_levels(resistances)
 
 # -----------------------
-# TRADE SIGNAL
-# -----------------------
-
-df["Signal"] = 0
-
-df.loc[
-    (df["Close"] > df["VWAP"]) &
-    (df["RSI"] > 50) &
-    (df["EMA20"] > df["EMA50"]),
-    "Signal"
-] = 1
-
-df.loc[
-    (df["Close"] < df["VWAP"]) &
-    (df["RSI"] < 50) &
-    (df["EMA20"] < df["EMA50"]),
-    "Signal"
-] = -1
-
-# -----------------------
 # SUBPLOTS
 # -----------------------
 
@@ -237,161 +222,58 @@ if show_volume: rows += 1
 if show_rsi: rows += 1
 if show_macd: rows += 1
 
-fig = make_subplots(
-    rows=rows,
-    cols=1,
-    shared_xaxes=True,
-    vertical_spacing=0.02,
-    row_heights=[0.6] + [0.13]*(rows-1)
-)
+fig = make_subplots(rows=rows, cols=1, shared_xaxes=True)
 
 current_row = 1
 price_row = current_row
 current_row += 1
 
-# -----------------------
 # PRICE
-# -----------------------
-
 fig.add_trace(go.Candlestick(
-    x=df.index,
-    open=df["Open"],
-    high=df["High"],
-    low=df["Low"],
-    close=df["Close"],
-    name="Price"
+    x=df.index, open=df["Open"], high=df["High"],
+    low=df["Low"], close=df["Close"]
 ), row=price_row, col=1)
 
-fig.add_trace(go.Scattergl(x=df.index,y=df["EMA20"],name="EMA20"),row=price_row,col=1)
-fig.add_trace(go.Scattergl(x=df.index,y=df["EMA50"],name="EMA50"),row=price_row,col=1)
-fig.add_trace(go.Scattergl(x=df.index,y=df["VWAP"],name="VWAP"),row=price_row,col=1)
+fig.add_trace(go.Scatter(x=df.index,y=df["EMA20"],name="EMA20"),row=price_row,col=1)
+fig.add_trace(go.Scatter(x=df.index,y=df["EMA50"],name="EMA50"),row=price_row,col=1)
+fig.add_trace(go.Scatter(x=df.index,y=df["VWAP"],name="VWAP"),row=price_row,col=1)
 
-fig.add_trace(go.Scattergl(x=df.index,y=df["VWAP_upper2"],name="VWAP +2"),row=price_row,col=1)
-fig.add_trace(go.Scattergl(x=df.index,y=df["VWAP_lower2"],name="VWAP -2"),row=price_row,col=1)
+fig.add_trace(go.Scatter(x=df.index,y=df["VWAP_upper2"],name="VWAP +2"),row=price_row,col=1)
+fig.add_trace(go.Scatter(x=df.index,y=df["VWAP_lower2"],name="VWAP -2"),row=price_row,col=1)
 
-# -----------------------
-# SIGNAL MARKERS
-# -----------------------
+# SIGNALS
+longs = df[df["LongSignal"]]
+shorts = df[df["ShortSignal"]]
 
-long_signals = df[df["LongSignal"]]
-short_signals = df[df["ShortSignal"]]
+fig.add_trace(go.Scatter(x=longs.index,y=longs["Close"],
+                         mode="markers",marker=dict(symbol="triangle-up",size=10),
+                         name="LONG"),row=price_row,col=1)
 
-fig.add_trace(go.Scattergl(
-    x=long_signals.index,
-    y=long_signals["Close"],
-    mode="markers",
-    marker=dict(symbol="triangle-up", size=12),
-    name="LONG ENTRY"
-), row=price_row, col=1)
+fig.add_trace(go.Scatter(x=shorts.index,y=shorts["Close"],
+                         mode="markers",marker=dict(symbol="triangle-down",size=10),
+                         name="SHORT"),row=price_row,col=1)
 
-fig.add_trace(go.Scattergl(
-    x=short_signals.index,
-    y=short_signals["Close"],
-    mode="markers",
-    marker=dict(symbol="triangle-down", size=12),
-    name="SHORT ENTRY"
-), row=price_row, col=1)
-
-# Support / Resistance
+# S/R
 for s in supports[-5:]:
     fig.add_hline(y=s,line_dash="dot",line_color="green",row=price_row,col=1)
 
 for r in resistances[-5:]:
     fig.add_hline(y=r,line_dash="dot",line_color="red",row=price_row,col=1)
 
-# -----------------------
 # VOLUME
-# -----------------------
-
 if show_volume:
-    fig.add_trace(go.Bar(x=df.index,y=df["Volume"],name="Volume"),
-                  row=current_row,col=1)
+    fig.add_trace(go.Bar(x=df.index,y=df["Volume"]),row=current_row,col=1)
     current_row += 1
 
-# -----------------------
 # RSI
-# -----------------------
-
 if show_rsi:
-    fig.add_trace(go.Scattergl(x=df.index,y=df["RSI"],name="RSI"),
-                  row=current_row,col=1)
-
-    fig.add_hline(y=70,row=current_row,col=1,line_dash="dot")
-    fig.add_hline(y=30,row=current_row,col=1,line_dash="dot")
-
+    fig.add_trace(go.Scatter(x=df.index,y=df["RSI"]),row=current_row,col=1)
     current_row += 1
 
-# -----------------------
 # MACD
-# -----------------------
-
 if show_macd:
-    fig.add_trace(go.Scattergl(x=df.index,y=df["MACD"],name="MACD"),
-                  row=current_row,col=1)
+    fig.add_trace(go.Bar(x=df.index,y=df["MACD_hist"]),row=current_row,col=1)
 
-    fig.add_trace(go.Scattergl(x=df.index,y=df["MACD_signal"],name="Signal"),
-                  row=current_row,col=1)
+fig.update_layout(height=1000, template="plotly_dark")
 
-    fig.add_trace(go.Bar(x=df.index,y=df["MACD_hist"],name="Hist"),
-                  row=current_row,col=1)
-
-# -----------------------
-# LAYOUT
-# -----------------------
-
-fig.update_layout(
-    height=1000,
-    template="plotly_dark",
-    hovermode="x unified",
-    xaxis_rangeslider_visible=False
-)
-
-st.plotly_chart(fig,use_container_width=True)
-
-# -----------------------
-# SMART SIGNAL OUTPUT
-# -----------------------
-
-last_long = df["LongSignal"].iloc[-1]
-last_short = df["ShortSignal"].iloc[-1]
-
-if last_long:
-    st.success("🚀 SMART LONG (Sweep + Reclaim + VWAP)")
-elif last_short:
-    st.error("🔻 SMART SHORT (Sweep + Rejection + VWAP)")
-else:
-    st.info("NO HIGH PROBABILITY SETUP")
-
-# -----------------------
-# SCANNER (FAST)
-# -----------------------
-
-@st.cache_data(ttl=300)
-def load_scanner_batch(assets):
-    return yf.download(
-        assets,
-        period="1mo",
-        interval="1d",
-        group_by="ticker",
-        threads=True
-    )
-
-assets=["BTC-USD","ETH-USD","SOL-USD","SPY","AAPL","NVDA","NFLX"]
-
-data_raw = load_scanner_batch(assets)
-
-scanner_data=[]
-
-for a in assets:
-    try:
-        d = data_raw[a].dropna()
-        close = d["Close"].values
-        momentum=((close[-1]-close[-10])/close[-10])*100
-        scanner_data.append((a,round(momentum,2)))
-    except:
-        pass
-
-scanner = pd.DataFrame(scanner_data,columns=["Asset","Momentum %"])
-
-st.subheader("Momentum Scanner")
-st.dataframe(scanner)
+st.plotly_chart(fig, use_container_width=True)
