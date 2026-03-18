@@ -546,7 +546,11 @@ fig.update_layout(
     uirevision=f"{symbol}_{interval}"
 )
 
-st.plotly_chart(fig, use_container_width=True)
+st.plotly_chart(
+    fig,
+    use_container_width=True,
+    key=f"chart_{symbol}_{interval}"
+)
 
 # -----------------------
 # ALERT / SIGNAL OUTPUT
