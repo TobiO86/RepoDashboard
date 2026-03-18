@@ -322,11 +322,11 @@ if show_score:
     titles.append("Score")
 
 # 👉 WICHTIG: größere Hauptchart-Gewichtung
-row_heights = [0.6]
+row_heights = [0.5]
 
 remaining = rows - 1
 if remaining > 0:
-    small_height = 0.4 / remaining
+    small_height = 0.5 / remaining
     row_heights += [small_height] * remaining
 
 fig = make_subplots(
@@ -426,13 +426,14 @@ for r in filtered_resistances:
         col=1
     )
     fig.add_annotation(
-    x=df.index[-1],
-    y=s,
-    text=f"S {s:.0f}",
-    showarrow=False,
-    font=dict(size=10),
-    xanchor="left"
-)
+        x=df.index[-1],
+        y=r,
+        text=f"R {r:.0f}",
+        showarrow=False,
+        font=dict(size=10),
+        xanchor="left"
+    )
+
     
 # -----------------------
 # BOLLINGER BANDS PLOT
@@ -493,6 +494,17 @@ if show_volume:
         y=df["Volume"],
         name="Volume"
     ), row=volume_row, col=1)
+    
+    fig.add_annotation(
+        x=df.index[-1],
+        y=df["Volume"].iloc[-1],
+        text=f"Vol {df['Volume'].iloc[-1]:.0f}",
+        showarrow=False,
+        xanchor="left",
+        row=volume_row,
+        col=1,
+        yshift=10
+    )
 
 # -----------------------
 # RSI
@@ -507,6 +519,17 @@ if show_rsi:
 
     fig.add_hline(y=70, line_dash="dot", row=rsi_row, col=1)
     fig.add_hline(y=30, line_dash="dot", row=rsi_row, col=1)
+    
+    fig.add_annotation(
+        x=df.index[-1],
+        y=df["RSI"].iloc[-1],
+        text=f"RSI {df['RSI'].iloc[-1]:.1f}",
+        showarrow=False,
+        xanchor="left",
+        row=rsi_row,
+        col=1,
+        yshift=10
+    )
 
 # -----------------------
 # MACD
@@ -530,7 +553,32 @@ if show_macd:
         y=df["MACD_hist"],
         name="Histogram"
     ), row=macd_row, col=1)
+    
+    fig.add_annotation(
+        x=df.index[-1],
+        y=df["MACD"].iloc[-1],
+        text=f"MACD {df['MACD'].iloc[-1]:.2f}",
+        showarrow=False,
+        xanchor="left",
+        row=macd_row,
+        col=1,
+        yshift=10
+    )
 
+    fig.add_annotation(
+        x=df.index[-1],
+        y=df["MACD_signal"].iloc[-1],
+        text=f"Signal {df['MACD_signal'].iloc[-1]:.2f}",
+        showarrow=False,
+        xanchor="left",
+        row=macd_row,
+        col=1,
+        yshift=10
+    )    
+    
+# -----------------------
+# SCORE
+# -----------------------
     
 if show_score:
     fig.add_trace(go.Scatter(
@@ -549,7 +597,29 @@ if show_score:
 
     fig.add_hline(y=5, line_dash="dash", row=score_row, col=1)
 
-    fig.update_yaxes(range=[0,8], row=score_row, col=1)    
+    fig.update_yaxes(range=[0,8], row=score_row, col=1)   
+    
+    fig.add_annotation(
+        x=df.index[-1],
+        y=df["LongScore"].iloc[-1],
+        text=f"L {df['LongScore'].iloc[-1]:.0f}",
+        showarrow=False,
+        xanchor="left",
+        row=score_row,
+        col=1,
+        yshift=10
+    )
+
+    fig.add_annotation(
+        x=df.index[-1],
+        y=df["ShortScore"].iloc[-1],
+        text=f"S {df['ShortScore'].iloc[-1]:.0f}",
+        showarrow=False,
+        xanchor="left",
+        row=score_row,
+        col=1,
+        yshift=10
+    ) 
     
 # -----------------------
 # LAYOUT (WICHTIG)
