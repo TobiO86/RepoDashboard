@@ -401,7 +401,7 @@ fig.add_trace(go.Scatter(
     x=shorts.index, y=shorts["Close"],
     mode="markers",
     marker=dict(symbol="triangle-down", size=12),
-    name="SHORT"
+    name="SHORT",
     connectgaps=False,
 ), row=price_row, col=1)
 
