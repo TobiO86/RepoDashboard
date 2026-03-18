@@ -93,14 +93,16 @@ df["MACD"] = ema12 - ema26
 df["MACD_signal"] = df["MACD"].ewm(span=9).mean()
 df["MACD_hist"] = df["MACD"] - df["MACD_signal"]
 
-df["Date"] = df.index.date
-df["VWAP"] = (df["Close"]*df["Volume"]).groupby(df["Date"]).cumsum() / df["Volume"].groupby(df["Date"]).cumsum()
+df["VWAP"] = (df["Close"] * df["Volume"]).cumsum() / df["Volume"].cumsum()
 
 typical_price = (df["High"] + df["Low"] + df["Close"]) / 3
 vwap_dev = (typical_price - df["VWAP"]).rolling(20).std()
 
 df["VWAP_upper2"] = df["VWAP"] + 2*vwap_dev
 df["VWAP_lower2"] = df["VWAP"] - 2*vwap_dev
+
+df.replace([np.inf, -np.inf], np.nan, inplace=True)
+df = df.dropna()
 
 # -----------------------
 # BOLLINGER BANDS
@@ -175,6 +177,7 @@ for i in range(2, len(df)):
 
     df.at[df.index[i], "ShortScore"] = score_short
 
+    st.write(df.tail())
 # -----------------------
 # HIGH PROBABILITY FILTER
 # -----------------------
@@ -362,6 +365,7 @@ fig.add_trace(go.Scatter(
     x=df.index,
     y=df["BB_UPPER"],
     name="BB Upper",
+    connectgaps=False
     line=dict(width=1, dash="dot")
 ), row=price_row, col=1)
 
@@ -369,6 +373,7 @@ fig.add_trace(go.Scatter(
     x=df.index,
     y=df["BB_LOWER"],
     name="BB Lower",
+    connectgaps=False
     line=dict(width=1, dash="dot")
 ), row=price_row, col=1)
 
@@ -376,6 +381,7 @@ fig.add_trace(go.Scatter(
     x=df.index,
     y=df["BB_MID"],
     name="BB Mid",
+    connectgaps=False
     line=dict(width=1)
 ), row=price_row, col=1)    
 
@@ -388,6 +394,7 @@ fig.add_trace(go.Scatter(
     mode="markers",
     marker=dict(symbol="triangle-up", size=12),
     name="LONG"
+    connectgaps=False
 ), row=price_row, col=1)
 
 fig.add_trace(go.Scatter(
@@ -395,12 +402,14 @@ fig.add_trace(go.Scatter(
     mode="markers",
     marker=dict(symbol="triangle-down", size=12),
     name="SHORT"
+    connectgaps=False
 ), row=price_row, col=1)
 
 fig.add_trace(go.Scatter(
     x=df.index,
     y=df["LongScore"],
     name="Long Score",
+    connectgaps=False
     line=dict(width=1, dash="dot")
 ), row=price_row, col=1)
 
@@ -408,6 +417,7 @@ fig.add_trace(go.Scatter(
     x=df.index,
     y=df["ShortScore"],
     name="Short Score",
+    connectgaps=False
     line=dict(width=1, dash="dot")
 ), row=price_row, col=1)
 
@@ -420,6 +430,7 @@ if show_volume:
         x=df.index,
         y=df["Volume"],
         name="Volume"
+        connectgaps=False
     ), row=current_row, col=1)
     current_row += 1
 
@@ -432,6 +443,7 @@ if show_rsi:
         x=df.index,
         y=df["RSI"],
         name="RSI"
+        connectgaps=False
     ), row=current_row, col=1)
 
     fig.add_hline(y=70, line_dash="dot", row=current_row, col=1)
@@ -448,19 +460,23 @@ if show_macd:
         x=df.index,
         y=df["MACD"],
         name="MACD"
+        connectgaps=False
     ), row=current_row, col=1)
 
     fig.add_trace(go.Scatter(
         x=df.index,
         y=df["MACD_signal"],
         name="Signal"
+        connectgaps=False
     ), row=current_row, col=1)
 
     fig.add_trace(go.Bar(
         x=df.index,
         y=df["MACD_hist"],
         name="Histogram"
+        connectgaps=False
     ), row=current_row, col=1)
+
 
 # -----------------------
 # LAYOUT (WICHTIG)
