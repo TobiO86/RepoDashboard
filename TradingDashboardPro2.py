@@ -54,9 +54,17 @@ def load_mtf(symbol):
 df_5m, df_15m = load_mtf(symbol)
 
 def mtf_bias(df):
-    ema20 = df["Close"].ewm(span=20).mean()
-    ema50 = df["Close"].ewm(span=50).mean()
-    return "bull" if ema20.iloc[-1] > ema50.iloc[-1] else "bear"
+    close = df["Close"]
+
+    # Falls MultiIndex / DataFrame → auf Series reduzieren
+    if isinstance(close, pd.DataFrame):
+        close = close.iloc[:, 0]
+
+    ema20 = close.ewm(span=20).mean()
+    ema50 = close.ewm(span=50).mean()
+
+    return "bull" if float(ema20.iloc[-1]) > float(ema50.iloc[-1]) else "bear"
+
 
 bias_5m = mtf_bias(df_5m)
 bias_15m = mtf_bias(df_15m)
