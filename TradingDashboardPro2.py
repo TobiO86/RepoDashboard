@@ -411,7 +411,7 @@ for s in filtered_supports:
     y=s,
     text=f"S {s:.0f}",
     showarrow=False,
-    font=dict(size=10),
+    font=dict(size=14),
     xanchor="left"
 )
 
@@ -430,7 +430,7 @@ for r in filtered_resistances:
         y=r,
         text=f"R {r:.0f}",
         showarrow=False,
-        font=dict(size=10),
+        font=dict(size=14),
         xanchor="left"
     )
 
@@ -503,7 +503,8 @@ if show_volume:
         xanchor="left",
         row=volume_row,
         col=1,
-        yshift=10
+        yshift=10,
+        font=dict(size=14)
     )
 
 # -----------------------
@@ -528,7 +529,8 @@ if show_rsi:
         xanchor="left",
         row=rsi_row,
         col=1,
-        yshift=10
+        yshift=10,
+        font=dict(size=14)
     )
 
 # -----------------------
@@ -562,7 +564,8 @@ if show_macd:
         xanchor="left",
         row=macd_row,
         col=1,
-        yshift=10
+        yshift=10,
+        font=dict(size=14)
     )
 
     fig.add_annotation(
@@ -573,7 +576,8 @@ if show_macd:
         xanchor="left",
         row=macd_row,
         col=1,
-        yshift=10
+        yshift=10,
+        font=dict(size=14)
     )    
     
 # -----------------------
@@ -607,7 +611,8 @@ if show_score:
         xanchor="left",
         row=score_row,
         col=1,
-        yshift=10
+        yshift=10,
+        font=dict(size=14)
     )
 
     fig.add_annotation(
@@ -618,7 +623,8 @@ if show_score:
         xanchor="left",
         row=score_row,
         col=1,
-        yshift=10
+        yshift=10,
+        font=dict(size=14)
     ) 
     
 # -----------------------
