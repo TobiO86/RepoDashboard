@@ -101,12 +101,6 @@ vwap_dev = (typical_price - df["VWAP"]).rolling(20).std()
 df["VWAP_upper2"] = df["VWAP"] + 2*vwap_dev
 df["VWAP_lower2"] = df["VWAP"] - 2*vwap_dev
 
-df = df.replace([np.inf, -np.inf], np.nan)
-
-df = df.dropna(subset=[
-    "Close","EMA20","EMA50","VWAP",
-    "RSI","MACD","MACD_signal"
-])
 # -----------------------
 # BOLLINGER BANDS
 # -----------------------
@@ -549,7 +543,7 @@ fig.update_layout(
 st.plotly_chart(
     fig,
     use_container_width=True,
-    key=f"chart_{symbol}_{interval}"
+    key=f"chart_{symbol}_{interval}_{period}"
 )
 
 # -----------------------
