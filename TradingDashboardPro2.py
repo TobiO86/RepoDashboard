@@ -101,9 +101,6 @@ vwap_dev = (typical_price - df["VWAP"]).rolling(20).std()
 df["VWAP_upper2"] = df["VWAP"] + 2*vwap_dev
 df["VWAP_lower2"] = df["VWAP"] - 2*vwap_dev
 
-df.replace([np.inf, -np.inf], np.nan, inplace=True)
-df = df.dropna()
-
 # -----------------------
 # BOLLINGER BANDS
 # -----------------------
@@ -177,7 +174,6 @@ for i in range(2, len(df)):
 
     df.at[df.index[i], "ShortScore"] = score_short
 
-    st.write(df.tail())
 # -----------------------
 # HIGH PROBABILITY FILTER
 # -----------------------
@@ -275,6 +271,13 @@ supports,resistances = detect_levels(df)
 supports = clean_levels(supports)[-5:]
 resistances = clean_levels(resistances)[-5:]
 
+
+df.replace([np.inf, -np.inf], np.nan, inplace=True)
+
+# nur relevante Spalten prüfen
+df = df.dropna(subset=[
+    "Close", "EMA20", "EMA50", "VWAP"
+])
 # -----------------------
 # SUBPLOTS (FIXED UI)
 # -----------------------
