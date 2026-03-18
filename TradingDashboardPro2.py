@@ -564,7 +564,7 @@ if show_macd:
         xanchor="left",
         row=macd_row,
         col=1,
-        yshift=20,
+        yshift=40,
         font=dict(size=14)
     )
 
@@ -576,7 +576,7 @@ if show_macd:
         xanchor="left",
         row=macd_row,
         col=1,
-        yshift=20,
+        yshift=40,
         font=dict(size=14)
     )    
     
