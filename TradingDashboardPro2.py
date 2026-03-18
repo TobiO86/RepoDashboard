@@ -278,12 +278,17 @@ df.replace([np.inf, -np.inf], np.nan, inplace=True)
 df = df.dropna(subset=[
     "Close", "EMA20", "EMA50", "VWAP"
 ])
+
 # -----------------------
 # SUBPLOTS (FIXED UI)
 # -----------------------
 
+show_score = True
+
+
 rows = 1
 titles = ["Price"]
+
 
 if show_volume:
     rows += 1
@@ -296,6 +301,10 @@ if show_rsi:
 if show_macd:
     rows += 1
     titles.append("MACD")
+
+if show_score:
+    rows += 1
+    titles.append("Score")
 
 # 👉 WICHTIG: größere Hauptchart-Gewichtung
 row_heights = [0.6]
@@ -318,6 +327,26 @@ current_row = 1
 price_row = current_row
 current_row += 1
 
+volume_row = None
+rsi_row = None
+macd_row = None
+score_row = None
+
+if show_volume:
+    volume_row = current_row
+    current_row += 1
+
+if show_rsi:
+    rsi_row = current_row
+    current_row += 1
+
+if show_macd:
+    macd_row = current_row
+    current_row += 1
+
+if show_score:
+    score_row = current_row
+    current_row += 1
 # -----------------------
 # PRICE
 # -----------------------
@@ -408,21 +437,6 @@ fig.add_trace(go.Scatter(
     connectgaps=False,
 ), row=price_row, col=1)
 
-fig.add_trace(go.Scatter(
-    x=df.index,
-    y=df["LongScore"],
-    name="Long Score",
-    connectgaps=False,
-    line=dict(width=1, dash="dot")
-), row=price_row, col=1)
-
-fig.add_trace(go.Scatter(
-    x=df.index,
-    y=df["ShortScore"],
-    name="Short Score",
-    connectgaps=False,
-    line=dict(width=1, dash="dot")
-), row=price_row, col=1)
 
 # -----------------------
 # VOLUME
@@ -433,8 +447,7 @@ if show_volume:
         x=df.index,
         y=df["Volume"],
         name="Volume"
-    ), row=current_row, col=1)
-    current_row += 1
+    ), row=volume_row, col=1)
 
 # -----------------------
 # RSI
@@ -445,12 +458,10 @@ if show_rsi:
         x=df.index,
         y=df["RSI"],
         name="RSI"
-    ), row=current_row, col=1)
+    ), row=rsi_row, col=1)
 
-    fig.add_hline(y=70, line_dash="dot", row=current_row, col=1)
-    fig.add_hline(y=30, line_dash="dot", row=current_row, col=1)
-
-    current_row += 1
+    fig.add_hline(y=70, line_dash="dot", row=rsi_row, col=1)
+    fig.add_hline(y=30, line_dash="dot", row=rsi_row, col=1)
 
 # -----------------------
 # MACD
@@ -461,21 +472,40 @@ if show_macd:
         x=df.index,
         y=df["MACD"],
         name="MACD"
-    ), row=current_row, col=1)
+    ), row=macd_row, col=1)
 
     fig.add_trace(go.Scatter(
         x=df.index,
         y=df["MACD_signal"],
         name="Signal"
-    ), row=current_row, col=1)
+    ), row=macd_row, col=1)
 
     fig.add_trace(go.Bar(
         x=df.index,
         y=df["MACD_hist"],
         name="Histogram"
-    ), row=current_row, col=1)
+    ), row=macd_row, col=1)
 
+    
+if show_score:
+    fig.add_trace(go.Scatter(
+        x=df.index,
+        y=df["LongScore"],
+        name="Long Score",
+        line=dict(width=1, dash="dot")
+    ), row=score_row, col=1)
 
+    fig.add_trace(go.Scatter(
+        x=df.index,
+        y=df["ShortScore"],
+        name="Short Score",
+        line=dict(width=1, dash="dot")
+    ), row=score_row, col=1)
+
+    fig.add_hline(y=5, line_dash="dash", row=score_row, col=1)
+
+    fig.update_yaxes(range=[0,8], row=score_row, col=1)    
+    
 # -----------------------
 # LAYOUT (WICHTIG)
 # -----------------------
