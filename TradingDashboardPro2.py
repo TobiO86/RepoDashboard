@@ -503,7 +503,7 @@ if show_volume:
         xanchor="left",
         row=volume_row,
         col=1,
-        yshift=10,
+        yshift=20,
         font=dict(size=14)
     )
 
@@ -529,7 +529,7 @@ if show_rsi:
         xanchor="left",
         row=rsi_row,
         col=1,
-        yshift=10,
+        yshift=20,
         font=dict(size=14)
     )
 
@@ -564,7 +564,7 @@ if show_macd:
         xanchor="left",
         row=macd_row,
         col=1,
-        yshift=10,
+        yshift=20,
         font=dict(size=14)
     )
 
@@ -576,7 +576,7 @@ if show_macd:
         xanchor="left",
         row=macd_row,
         col=1,
-        yshift=10,
+        yshift=20,
         font=dict(size=14)
     )    
     
@@ -611,7 +611,7 @@ if show_score:
         xanchor="left",
         row=score_row,
         col=1,
-        yshift=10,
+        yshift=20,
         font=dict(size=14)
     )
 
@@ -623,7 +623,7 @@ if show_score:
         xanchor="left",
         row=score_row,
         col=1,
-        yshift=10,
+        yshift=20,
         font=dict(size=14)
     ) 
     
