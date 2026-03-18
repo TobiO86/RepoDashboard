@@ -4,6 +4,7 @@ import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from streamlit_autorefresh import st_autorefresh
+import numpy as np
 
 st.set_page_config(layout="wide")
 st.title("Trading Dashboard PRO")
@@ -86,6 +87,72 @@ vwap_dev = (typical_price - df["VWAP"]).rolling(20).std()
 df["VWAP_upper2"] = df["VWAP"] + 2*vwap_dev
 df["VWAP_lower2"] = df["VWAP"] - 2*vwap_dev
 
+# -----------------------
+# SMART MONEY / ORDERFLOW LOGIC
+# -----------------------
+
+# Liquidity Sweep
+lookback = 20
+df["high_max"] = df["High"].rolling(lookback).max()
+df["low_min"] = df["Low"].rolling(lookback).min()
+
+df["sweep_high"] = df["High"] > df["high_max"].shift(1)
+df["sweep_low"] = df["Low"] < df["low_min"].shift(1)
+
+# Volume Spike
+df["vol_mean"] = df["Volume"].rolling(20).mean()
+df["vol_spike"] = df["Volume"] > df["vol_mean"] * 1.5
+
+# Reclaim / Rejection Logik
+df["LongSignal"] = False
+df["ShortSignal"] = False
+
+for i in range(2, len(df)):
+    prev = df.iloc[i-1]
+    curr = df.iloc[i]
+
+    # LONG: Sweep unten + Reclaim + über VWAP
+    if (
+        prev["sweep_low"] and
+        curr["Close"] > prev["Low"] and
+        curr["Close"] > curr["VWAP"] and
+        curr["vol_spike"]
+    ):
+        df.at[df.index[i], "LongSignal"] = True
+
+    # SHORT: Sweep oben + Rejection + unter VWAP
+    if (
+        prev["sweep_high"] and
+        curr["Close"] < prev["High"] and
+        curr["Close"] < curr["VWAP"] and
+        curr["vol_spike"]
+    ):
+        df.at[df.index[i], "ShortSignal"] = True
+
+
+# -----------------------
+# SL / TP BERECHNUNG
+# -----------------------
+
+df["SL"] = np.nan
+df["TP"] = np.nan
+
+for i in range(1, len(df)):
+    # LONG
+    if df["LongSignal"].iloc[i]:
+        sl = df["Low"].iloc[i-1]
+        entry = df["Close"].iloc[i]
+
+        df.at[df.index[i], "SL"] = sl
+        df.at[df.index[i], "TP"] = entry + (entry - sl) * 2
+
+    # SHORT
+    if df["ShortSignal"].iloc[i]:
+        sl = df["High"].iloc[i-1]
+        entry = df["Close"].iloc[i]
+
+        df.at[df.index[i], "SL"] = sl
+        df.at[df.index[i], "TP"] = entry - (sl - entry) * 2
 # -----------------------
 # PRICE METRICS
 # -----------------------
@@ -202,6 +269,29 @@ fig.add_trace(go.Scattergl(x=df.index,y=df["VWAP"],name="VWAP"),row=price_row,co
 fig.add_trace(go.Scattergl(x=df.index,y=df["VWAP_upper2"],name="VWAP +2"),row=price_row,col=1)
 fig.add_trace(go.Scattergl(x=df.index,y=df["VWAP_lower2"],name="VWAP -2"),row=price_row,col=1)
 
+# -----------------------
+# SIGNAL MARKERS
+# -----------------------
+
+long_signals = df[df["LongSignal"]]
+short_signals = df[df["ShortSignal"]]
+
+fig.add_trace(go.Scattergl(
+    x=long_signals.index,
+    y=long_signals["Close"],
+    mode="markers",
+    marker=dict(symbol="triangle-up", size=12),
+    name="LONG ENTRY"
+), row=price_row, col=1)
+
+fig.add_trace(go.Scattergl(
+    x=short_signals.index,
+    y=short_signals["Close"],
+    mode="markers",
+    marker=dict(symbol="triangle-down", size=12),
+    name="SHORT ENTRY"
+), row=price_row, col=1)
+
 # Support / Resistance
 for s in supports[-5:]:
     fig.add_hline(y=s,line_dash="dot",line_color="green",row=price_row,col=1)
@@ -259,17 +349,18 @@ fig.update_layout(
 st.plotly_chart(fig,use_container_width=True)
 
 # -----------------------
-# SIGNAL OUTPUT
+# SMART SIGNAL OUTPUT
 # -----------------------
 
-last_signal = df["Signal"].iloc[-1]
+last_long = df["LongSignal"].iloc[-1]
+last_short = df["ShortSignal"].iloc[-1]
 
-if last_signal == 1:
-    st.success("LONG SIGNAL")
-elif last_signal == -1:
-    st.error("SHORT SIGNAL")
+if last_long:
+    st.success("🚀 SMART LONG (Sweep + Reclaim + VWAP)")
+elif last_short:
+    st.error("🔻 SMART SHORT (Sweep + Rejection + VWAP)")
 else:
-    st.info("NO CLEAR SIGNAL")
+    st.info("NO HIGH PROBABILITY SETUP")
 
 # -----------------------
 # SCANNER (FAST)
