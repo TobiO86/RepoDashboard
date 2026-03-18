@@ -10,8 +10,6 @@ import requests
 st.set_page_config(layout="wide")
 st.title("Trading Dashboard PRO")
 
-st_autorefresh(interval=5000, key="datarefresh")
-
 # -----------------------
 # SIDEBAR
 # -----------------------
@@ -19,6 +17,8 @@ st_autorefresh(interval=5000, key="datarefresh")
 symbol = st.sidebar.text_input("Ticker", value="BTC-USD").upper()
 period = st.sidebar.selectbox("Period", ["5d","1mo","3mo","6mo","1y"])
 interval = st.sidebar.selectbox("Timeframe", ["15m","1h","4h","1d"])
+
+st_autorefresh(interval=5000, key=f"refresh_{symbol}")
 
 show_volume = st.sidebar.checkbox("Volume", True)
 show_rsi = st.sidebar.checkbox("RSI", True)
@@ -212,10 +212,6 @@ for i in range(len(df)):
 # SL / TP
 # -----------------------
 
-# -----------------------
-# SL / TP
-# -----------------------
-
 df["SL"] = np.nan
 df["TP"] = np.nan
 
@@ -275,6 +271,14 @@ def clean_levels(levels,threshold=0.002):
             filtered.append(l)
     return filtered
 
+df = df.replace([np.inf, -np.inf], np.nan)
+
+df = df.dropna(subset=[
+    "Close","EMA20","EMA50","VWAP",
+    "RSI","MACD","MACD_signal",
+    "BB_UPPER","BB_LOWER","BB_MID"
+])
+
 supports,resistances = detect_levels(df)
 if len(supports) == 0:
     supports = [df["Low"].min()]
@@ -290,15 +294,6 @@ current_price = df["Close"].iloc[-1]
 supports = sorted(supports, key=lambda x: abs(x - current_price))[:5]
 resistances = sorted(resistances, key=lambda x: abs(x - current_price))[:5]
 
-df.replace([np.inf, -np.inf], np.nan, inplace=True)
-
-df = df.replace([np.inf, -np.inf], np.nan)
-
-df = df.dropna(subset=[
-    "Close","EMA20","EMA50","VWAP",
-    "RSI","MACD","MACD_signal",
-    "BB_UPPER","BB_LOWER","BB_MID"
-])
 # -----------------------
 # SUBPLOTS (FIXED UI)
 # -----------------------
@@ -390,26 +385,54 @@ fig.add_trace(go.Scatter(x=df.index,y=df["VWAP_lower2"],name="VWAP -2"),row=pric
 # -----------------------
 # SUPPORT / RESISTANCE LINES
 # -----------------------
+price_range = df["High"].max() - df["Low"].min()
 
-for s in supports:
+filtered_supports = [s for s in supports if abs(s - current_price) < price_range * 0.3]
+filtered_resistances = [r for r in resistances if abs(r - current_price) < price_range * 0.3]
+
+if len(filtered_supports) == 0:
+    filtered_supports = supports[:2]
+
+if len(filtered_resistances) == 0:
+    filtered_resistances = resistances[:2]
+    
+for s in filtered_supports:
     fig.add_hline(
         y=s,
         line_dash="dot",
         line_color="green",
+        line_width=1.5,
         opacity=0.4,
         row=price_row,
         col=1
     )
+    fig.add_annotation(
+    x=df.index[-1],
+    y=s,
+    text=f"S {s:.0f}",
+    showarrow=False,
+    font=dict(size=10),
+    xanchor="left"
+)
 
-for r in resistances:
+for r in filtered_resistances:
     fig.add_hline(
         y=r,
         line_dash="dot",
         line_color="red",
+        line_width=1.5,
         opacity=0.4,
         row=price_row,
         col=1
     )
+    fig.add_annotation(
+    x=df.index[-1],
+    y=s,
+    text=f"S {s:.0f}",
+    showarrow=False,
+    font=dict(size=10),
+    xanchor="left"
+)
     
 # -----------------------
 # BOLLINGER BANDS PLOT
@@ -537,7 +560,7 @@ fig.update_layout(
     template="plotly_dark",
     hovermode="x unified",
     xaxis_rangeslider_visible=False,
-    uirevision=f"{symbol}_{interval}"
+    uirevision="constant"
 )
 
 st.plotly_chart(
