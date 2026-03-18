@@ -214,24 +214,56 @@ supports = clean_levels(supports)
 resistances = clean_levels(resistances)
 
 # -----------------------
-# SUBPLOTS
+# SUBPLOTS (FIXED UI)
 # -----------------------
 
 rows = 1
-if show_volume: rows += 1
-if show_rsi: rows += 1
-if show_macd: rows += 1
+titles = ["Price"]
 
-fig = make_subplots(rows=rows, cols=1, shared_xaxes=True)
+if show_volume:
+    rows += 1
+    titles.append("Volume")
+
+if show_rsi:
+    rows += 1
+    titles.append("RSI")
+
+if show_macd:
+    rows += 1
+    titles.append("MACD")
+
+# 👉 WICHTIG: größere Hauptchart-Gewichtung
+row_heights = [0.6]
+
+remaining = rows - 1
+if remaining > 0:
+    small_height = 0.4 / remaining
+    row_heights += [small_height] * remaining
+
+fig = make_subplots(
+    rows=rows,
+    cols=1,
+    shared_xaxes=True,
+    vertical_spacing=0.03,
+    row_heights=row_heights,
+    subplot_titles=titles
+)
 
 current_row = 1
 price_row = current_row
 current_row += 1
 
+# -----------------------
 # PRICE
+# -----------------------
+
 fig.add_trace(go.Candlestick(
-    x=df.index, open=df["Open"], high=df["High"],
-    low=df["Low"], close=df["Close"]
+    x=df.index,
+    open=df["Open"],
+    high=df["High"],
+    low=df["Low"],
+    close=df["Close"],
+    name="Price"
 ), row=price_row, col=1)
 
 fig.add_trace(go.Scatter(x=df.index,y=df["EMA20"],name="EMA20"),row=price_row,col=1)
@@ -245,35 +277,80 @@ fig.add_trace(go.Scatter(x=df.index,y=df["VWAP_lower2"],name="VWAP -2"),row=pric
 longs = df[df["LongSignal"]]
 shorts = df[df["ShortSignal"]]
 
-fig.add_trace(go.Scatter(x=longs.index,y=longs["Close"],
-                         mode="markers",marker=dict(symbol="triangle-up",size=10),
-                         name="LONG"),row=price_row,col=1)
+fig.add_trace(go.Scatter(
+    x=longs.index, y=longs["Close"],
+    mode="markers",
+    marker=dict(symbol="triangle-up", size=12),
+    name="LONG"
+), row=price_row, col=1)
 
-fig.add_trace(go.Scatter(x=shorts.index,y=shorts["Close"],
-                         mode="markers",marker=dict(symbol="triangle-down",size=10),
-                         name="SHORT"),row=price_row,col=1)
+fig.add_trace(go.Scatter(
+    x=shorts.index, y=shorts["Close"],
+    mode="markers",
+    marker=dict(symbol="triangle-down", size=12),
+    name="SHORT"
+), row=price_row, col=1)
 
-# S/R
-for s in supports[-5:]:
-    fig.add_hline(y=s,line_dash="dot",line_color="green",row=price_row,col=1)
-
-for r in resistances[-5:]:
-    fig.add_hline(y=r,line_dash="dot",line_color="red",row=price_row,col=1)
-
+# -----------------------
 # VOLUME
+# -----------------------
+
 if show_volume:
-    fig.add_trace(go.Bar(x=df.index,y=df["Volume"]),row=current_row,col=1)
+    fig.add_trace(go.Bar(
+        x=df.index,
+        y=df["Volume"],
+        name="Volume"
+    ), row=current_row, col=1)
     current_row += 1
 
+# -----------------------
 # RSI
+# -----------------------
+
 if show_rsi:
-    fig.add_trace(go.Scatter(x=df.index,y=df["RSI"]),row=current_row,col=1)
+    fig.add_trace(go.Scatter(
+        x=df.index,
+        y=df["RSI"],
+        name="RSI"
+    ), row=current_row, col=1)
+
+    fig.add_hline(y=70, line_dash="dot", row=current_row, col=1)
+    fig.add_hline(y=30, line_dash="dot", row=current_row, col=1)
+
     current_row += 1
 
+# -----------------------
 # MACD
-if show_macd:
-    fig.add_trace(go.Bar(x=df.index,y=df["MACD_hist"]),row=current_row,col=1)
+# -----------------------
 
-fig.update_layout(height=1000, template="plotly_dark")
+if show_macd:
+    fig.add_trace(go.Scatter(
+        x=df.index,
+        y=df["MACD"],
+        name="MACD"
+    ), row=current_row, col=1)
+
+    fig.add_trace(go.Scatter(
+        x=df.index,
+        y=df["MACD_signal"],
+        name="Signal"
+    ), row=current_row, col=1)
+
+    fig.add_trace(go.Bar(
+        x=df.index,
+        y=df["MACD_hist"],
+        name="Histogram"
+    ), row=current_row, col=1)
+
+# -----------------------
+# LAYOUT (WICHTIG)
+# -----------------------
+
+fig.update_layout(
+    height=1100,  # 👈 größer!
+    template="plotly_dark",
+    hovermode="x unified",
+    xaxis_rangeslider_visible=False
+)
 
 st.plotly_chart(fig, use_container_width=True)
