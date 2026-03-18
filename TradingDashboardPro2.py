@@ -365,7 +365,7 @@ fig.add_trace(go.Scatter(
     x=df.index,
     y=df["BB_UPPER"],
     name="BB Upper",
-    connectgaps=False
+    connectgaps=False,
     line=dict(width=1, dash="dot")
 ), row=price_row, col=1)
 
@@ -373,7 +373,7 @@ fig.add_trace(go.Scatter(
     x=df.index,
     y=df["BB_LOWER"],
     name="BB Lower",
-    connectgaps=False
+    connectgaps=False,
     line=dict(width=1, dash="dot")
 ), row=price_row, col=1)
 
@@ -381,7 +381,7 @@ fig.add_trace(go.Scatter(
     x=df.index,
     y=df["BB_MID"],
     name="BB Mid",
-    connectgaps=False
+    connectgaps=False,
     line=dict(width=1)
 ), row=price_row, col=1)    
 
@@ -394,7 +394,7 @@ fig.add_trace(go.Scatter(
     mode="markers",
     marker=dict(symbol="triangle-up", size=12),
     name="LONG"
-    connectgaps=False
+    connectgaps=False,
 ), row=price_row, col=1)
 
 fig.add_trace(go.Scatter(
@@ -402,14 +402,14 @@ fig.add_trace(go.Scatter(
     mode="markers",
     marker=dict(symbol="triangle-down", size=12),
     name="SHORT"
-    connectgaps=False
+    connectgaps=False,
 ), row=price_row, col=1)
 
 fig.add_trace(go.Scatter(
     x=df.index,
     y=df["LongScore"],
     name="Long Score",
-    connectgaps=False
+    connectgaps=False,
     line=dict(width=1, dash="dot")
 ), row=price_row, col=1)
 
@@ -417,7 +417,7 @@ fig.add_trace(go.Scatter(
     x=df.index,
     y=df["ShortScore"],
     name="Short Score",
-    connectgaps=False
+    connectgaps=False,
     line=dict(width=1, dash="dot")
 ), row=price_row, col=1)
 
@@ -430,7 +430,6 @@ if show_volume:
         x=df.index,
         y=df["Volume"],
         name="Volume"
-        connectgaps=False
     ), row=current_row, col=1)
     current_row += 1
 
@@ -443,7 +442,6 @@ if show_rsi:
         x=df.index,
         y=df["RSI"],
         name="RSI"
-        connectgaps=False
     ), row=current_row, col=1)
 
     fig.add_hline(y=70, line_dash="dot", row=current_row, col=1)
@@ -460,21 +458,18 @@ if show_macd:
         x=df.index,
         y=df["MACD"],
         name="MACD"
-        connectgaps=False
     ), row=current_row, col=1)
 
     fig.add_trace(go.Scatter(
         x=df.index,
         y=df["MACD_signal"],
         name="Signal"
-        connectgaps=False
     ), row=current_row, col=1)
 
     fig.add_trace(go.Bar(
         x=df.index,
         y=df["MACD_hist"],
         name="Histogram"
-        connectgaps=False
     ), row=current_row, col=1)
 
 
