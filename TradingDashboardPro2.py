@@ -16,9 +16,26 @@ st.title("Trading Dashboard PRO")
 
 symbol = st.sidebar.text_input("Ticker", value="BTC-USD").upper()
 period = st.sidebar.selectbox("Period", ["5d","1mo","3mo","6mo","1y"])
-interval = st.sidebar.selectbox("Timeframe", ["15m","1h","4h","1d"])
+interval = st.sidebar.selectbox("Timeframe", ["1m","5m","15m","1h","4h","1d"])
 
-st_autorefresh(interval=5000, key=f"refresh_{symbol}")
+# -----------------------
+# AUTO PERIOD FIX (BEST PRACTICE)
+# -----------------------
+
+if interval == "1m" and period != "1d":
+    period = "1d"
+elif interval == "5m":
+    period = "5d"
+elif interval == "15m":
+    period = "1mo"
+elif interval == "1h":
+    period = "3mo"
+elif interval == "4h":
+    period = "6mo"
+
+st.sidebar.caption(f"Aktive Kombi: {interval} / {period}")
+
+st_autorefresh(interval=10000, key=f"refresh_{symbol}")  # 10s
 
 show_volume = st.sidebar.checkbox("Volume", True)
 show_rsi = st.sidebar.checkbox("RSI", True)
@@ -28,7 +45,7 @@ show_macd = st.sidebar.checkbox("MACD", True)
 # DATA
 # -----------------------
 
-@st.cache_data(ttl=5)
+@st.cache_data(ttl=10)
 def load_data(symbol,period,interval):
     df = yf.download(symbol,period=period,interval=interval, progress=False)
     if isinstance(df.columns,pd.MultiIndex):
