@@ -28,7 +28,7 @@ show_macd = st.sidebar.checkbox("MACD", True)
 # DATA
 # -----------------------
 
-@st.cache_data(ttl=5)
+@st.cache_data(ttl=15)
 def load_data(symbol,period,interval):
     df = yf.download(symbol,period=period,interval=interval, progress=False)
     if isinstance(df.columns,pd.MultiIndex):
