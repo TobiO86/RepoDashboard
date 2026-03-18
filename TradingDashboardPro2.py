@@ -39,7 +39,7 @@ df = load_data(symbol,period,interval)
 if len(df) == 0:
     st.stop()
 
-df = df.tail(100)
+df = df.tail(300)
 
 # -----------------------
 # MTF
@@ -101,6 +101,12 @@ vwap_dev = (typical_price - df["VWAP"]).rolling(20).std()
 df["VWAP_upper2"] = df["VWAP"] + 2*vwap_dev
 df["VWAP_lower2"] = df["VWAP"] - 2*vwap_dev
 
+df = df.replace([np.inf, -np.inf], np.nan)
+
+df = df.dropna(subset=[
+    "Close","EMA20","EMA50","VWAP",
+    "RSI","MACD","MACD_signal"
+])
 # -----------------------
 # BOLLINGER BANDS
 # -----------------------
@@ -154,6 +160,10 @@ for i in range(2, len(df)):
     if bias_15m == "bull": score_long += 1
     if curr["delta"] > -vol_avg.iloc[i]: score_long += 1
 
+    # LONG nur wenn echter Reclaim
+    if prev["sweep_low"] and curr["Close"] > prev["Low"]:
+        score_long += 1
+
     # 🔥 Liquidity Boost
     if prev["sweep_low"] and curr["Close"] > curr["VWAP"]:
         score_long += 2
@@ -168,6 +178,10 @@ for i in range(2, len(df)):
     if bias_15m == "bear": score_short += 1
     if curr["delta"] < vol_avg.iloc[i]: score_short += 1
 
+    # SHORT nur wenn echter Rejection
+    if prev["sweep_high"] and curr["Close"] < prev["High"]:
+        score_short += 1
+        
     # 🔥 Liquidity Boost
     if prev["sweep_high"] and curr["Close"] < curr["VWAP"]:
         score_short += 2
@@ -260,7 +274,7 @@ def detect_levels(df,window=10):
             resistances.append(highs[i])
     return supports,resistances
 
-def clean_levels(levels,threshold=0.005):
+def clean_levels(levels,threshold=0.002):
     filtered=[]
     for l in sorted(levels):
         if not any(abs(l-f)/f < threshold for f in filtered):
@@ -268,17 +282,29 @@ def clean_levels(levels,threshold=0.005):
     return filtered
 
 supports,resistances = detect_levels(df)
-supports = clean_levels(supports)[-5:]
-resistances = clean_levels(resistances)[-5:]
+if len(supports) == 0:
+    supports = [df["Low"].min()]
 
+if len(resistances) == 0:
+    resistances = [df["High"].max()]
+    
+supports = clean_levels(supports)
+resistances = clean_levels(resistances)
+
+current_price = df["Close"].iloc[-1]
+
+supports = sorted(supports, key=lambda x: abs(x - current_price))[:5]
+resistances = sorted(resistances, key=lambda x: abs(x - current_price))[:5]
 
 df.replace([np.inf, -np.inf], np.nan, inplace=True)
 
-# nur relevante Spalten prüfen
-df = df.dropna(subset=[
-    "Close", "EMA20", "EMA50", "VWAP"
-])
+df = df.replace([np.inf, -np.inf], np.nan)
 
+df = df.dropna(subset=[
+    "Close","EMA20","EMA50","VWAP",
+    "RSI","MACD","MACD_signal",
+    "BB_UPPER","BB_LOWER","BB_MID"
+])
 # -----------------------
 # SUBPLOTS (FIXED UI)
 # -----------------------
@@ -371,19 +397,21 @@ fig.add_trace(go.Scatter(x=df.index,y=df["VWAP_lower2"],name="VWAP -2"),row=pric
 # SUPPORT / RESISTANCE LINES
 # -----------------------
 
-for s in supports[-5:]:
+for s in supports:
     fig.add_hline(
         y=s,
         line_dash="dot",
+        line_color="green",
         opacity=0.4,
         row=price_row,
         col=1
     )
 
-for r in resistances[-5:]:
+for r in resistances:
     fig.add_hline(
         y=r,
         line_dash="dot",
+        line_color="red",
         opacity=0.4,
         row=price_row,
         col=1
