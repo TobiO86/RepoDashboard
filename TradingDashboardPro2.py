@@ -15,11 +15,18 @@ if "symbol" not in st.session_state:
 # MARKET SCANNER (PRO LEVEL)
 # -----------------------
 
-@st.cache_data(ttl=3600)
+@st.cache_data(ttl=86400)
 def get_sp500_symbols():
-    url = "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies"
-    table = pd.read_html(url)[0]
-    return table["Symbol"].tolist()
+    return [
+        "AAPL","MSFT","NVDA","AMZN","META","GOOGL","TSLA",
+        "BRK-B","UNH","XOM","JPM","V","LLY","AVGO","MA",
+        "HD","PG","COST","MRK","ABBV","PEP","KO","ADBE",
+        "CRM","WMT","BAC","NFLX","AMD","TMO","CVX","ACN",
+        "DHR","LIN","MCD","ABT","ORCL","WFC","CSCO","TXN",
+        "VZ","PM","INTU","QCOM","IBM","AMGN","CAT","GE",
+        "DIS","NOW","GS","ISRG","RTX","SPGI","BLK","MDT",
+        "BA","PLD","BKNG","DE","AXP","GILD","ADP"
+    ]
 
 
 @st.cache_data(ttl=60)
