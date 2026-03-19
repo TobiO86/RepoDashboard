@@ -211,7 +211,7 @@ df["delta"] = np.where(df["Close"] > df["Open"], df["Volume"], -df["Volume"])
 df["cum_delta"] = df["delta"].cumsum()
 
 # -----------------------
-# SMART MONEY (FIXED)
+# SELL THE NEWS DETECTOR
 # -----------------------
 
 lookback = 20
@@ -223,6 +223,37 @@ df["sweep_low"] = df["Low"] < df["low_min"].shift(1)
 
 df["vol_mean"] = df["Volume"].rolling(20).mean()
 df["vol_spike"] = df["Volume"] > df["vol_mean"] * 1.5
+
+df["SellNewsShort"] = False
+df["SellNewsLong"] = False
+
+start = max(2, len(df) - 100)
+
+for i in range(start, len(df)):
+    prev = df.iloc[i-1]
+    curr = df.iloc[i]
+
+    # SHORT: Fake Breakout nach oben → Reversal
+    if (
+        prev["sweep_high"] and
+        prev["Close"] > prev["VWAP"] and   # vorher stark
+        curr["Close"] < curr["VWAP"] and   # jetzt schwach
+        curr["Close"] < prev["Close"]      # Momentum kippt
+    ):
+        df.at[df.index[i], "SellNewsShort"] = True
+
+    # LONG: Fake Breakdown → Reversal
+    if (
+        prev["sweep_low"] and
+        prev["Close"] < prev["VWAP"] and
+        curr["Close"] > curr["VWAP"] and
+        curr["Close"] > prev["Close"]
+    ):
+        df.at[df.index[i], "SellNewsLong"] = True  
+
+# -----------------------
+# SMART MONEY (FIXED)
+# -----------------------
 
 df["LongScore"] = 0
 df["ShortScore"] = 0
@@ -274,38 +305,7 @@ for i in range(start, len(df)):
     if prev["sweep_high"] and curr["Close"] < curr["VWAP"]:
         score_short += 2
 
-    df.at[df.index[i], "ShortScore"] = score_short
-    
-# -----------------------
-# SELL THE NEWS DETECTOR
-# -----------------------
-
-df["SellNewsShort"] = False
-df["SellNewsLong"] = False
-
-start = max(2, len(df) - 100)
-
-for i in range(start, len(df)):
-    prev = df.iloc[i-1]
-    curr = df.iloc[i]
-
-    # SHORT: Fake Breakout nach oben → Reversal
-    if (
-        prev["sweep_high"] and
-        prev["Close"] > prev["VWAP"] and   # vorher stark
-        curr["Close"] < curr["VWAP"] and   # jetzt schwach
-        curr["Close"] < prev["Close"]      # Momentum kippt
-    ):
-        df.at[df.index[i], "SellNewsShort"] = True
-
-    # LONG: Fake Breakdown → Reversal
-    if (
-        prev["sweep_low"] and
-        prev["Close"] < prev["VWAP"] and
-        curr["Close"] > curr["VWAP"] and
-        curr["Close"] > prev["Close"]
-    ):
-        df.at[df.index[i], "SellNewsLong"] = True    
+    df.at[df.index[i], "ShortScore"] = score_short  
 
 # -----------------------
 # HIGH PROBABILITY FILTER
@@ -319,7 +319,9 @@ df["ShortSignal"] = False
 
 df["ScoreDelta"] = df["LongScore"] - df["ShortScore"]
 
-for i in range(len(df)):
+start = max(2, len(df) - 100)
+
+for i in range(start, len(df)):
 
     if HIGH_PROB_MODE:
         if (
