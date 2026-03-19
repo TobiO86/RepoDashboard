@@ -7,6 +7,37 @@ from streamlit_autorefresh import st_autorefresh
 import numpy as np
 import requests
 
+# -----------------------
+# MARKET SCANNER
+# -----------------------
+
+@st.cache_data(ttl=60)
+def get_market_movers():
+    url = "https://query1.finance.yahoo.com/v1/finance/screener/predefined/saved"
+    
+    params = {
+        "scrIds": "day_gainers",
+        "count": 10
+    }
+    
+    try:
+        res = requests.get(url, params=params)
+        data = res.json()
+        gainers = data["finance"]["result"][0]["quotes"]
+    except:
+        gainers = []
+
+    params["scrIds"] = "day_losers"
+    
+    try:
+        res = requests.get(url, params=params)
+        data = res.json()
+        losers = data["finance"]["result"][0]["quotes"]
+    except:
+        losers = []
+
+    return gainers, losers
+
 st.set_page_config(layout="wide")
 st.title("Trading Dashboard PRO")
 
@@ -198,6 +229,35 @@ for i in range(2, len(df)):
         score_short += 2
 
     df.at[df.index[i], "ShortScore"] = score_short
+    
+# -----------------------
+# SELL THE NEWS DETECTOR
+# -----------------------
+
+df["SellNewsShort"] = False
+df["SellNewsLong"] = False
+
+for i in range(2, len(df)):
+    prev = df.iloc[i-1]
+    curr = df.iloc[i]
+
+    # SHORT: Fake Breakout nach oben → Reversal
+    if (
+        prev["sweep_high"] and
+        prev["Close"] > prev["VWAP"] and   # vorher stark
+        curr["Close"] < curr["VWAP"] and   # jetzt schwach
+        curr["Close"] < prev["Close"]      # Momentum kippt
+    ):
+        df.at[df.index[i], "SellNewsShort"] = True
+
+    # LONG: Fake Breakdown → Reversal
+    if (
+        prev["sweep_low"] and
+        prev["Close"] < prev["VWAP"] and
+        curr["Close"] > curr["VWAP"] and
+        curr["Close"] > prev["Close"]
+    ):
+        df.at[df.index[i], "SellNewsLong"] = True    
 
 # -----------------------
 # HIGH PROBABILITY FILTER
