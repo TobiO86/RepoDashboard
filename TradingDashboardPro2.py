@@ -7,89 +7,118 @@ from streamlit_autorefresh import st_autorefresh
 import numpy as np
 import requests
 
+
+if "symbol" not in st.session_state:
+    st.session_state.symbol = "BTC-USD"
+    
 # -----------------------
-# MARKET SCANNER
+# MARKET SCANNER (PRO LEVEL)
 # -----------------------
 
-@st.cache_data(ttl=3)
-def get_market_movers():
-    url = "https://query1.finance.yahoo.com/v1/finance/screener/predefined/saved"
-    
-    params = {
-        "scrIds": "day_gainers",
-        "count": 10
-    }
-    
-    try:
-        res = requests.get(url, params=params)
-        data = res.json()
-        gainers = data["finance"]["result"][0]["quotes"]
-    except:
-        gainers = []
+@st.cache_data(ttl=3600)
+def get_sp500_symbols():
+    url = "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies"
+    table = pd.read_html(url)[0]
+    return table["Symbol"].tolist()
 
-    params["scrIds"] = "day_losers"
-    
-    try:
-        res = requests.get(url, params=params)
-        data = res.json()
-        losers = data["finance"]["result"][0]["quotes"]
-    except:
-        losers = []
 
-    return gainers, losers
+@st.cache_data(ttl=60)
+def scan_market(limit=100):
+    symbols = get_sp500_symbols()[:limit]  # ⚡ limit für Performance
+    results = []
 
-st.set_page_config(layout="wide")
-st.title("Trading Dashboard PRO")
+    data = yf.download(
+        tickers=symbols,
+        period="2d",
+        interval="5m",
+        group_by="ticker",
+        threads=True,
+        progress=False
+    )
+
+    for s in symbols:
+        try:
+            if s not in data:
+                continue
+
+            df = data[s].dropna()
+
+            if len(df) < 20:
+                continue
+
+            last = df.iloc[-1]
+            prev = df.iloc[-2]
+
+            change = (last["Close"] - prev["Close"]) / prev["Close"] * 100
+            vol = last["Volume"]
+
+            # 🔥 Core Filter
+            if vol > 300_000 and abs(change) > 0.7:
+                results.append({
+                    "symbol": s,
+                    "change": change,
+                    "volume": vol
+                })
+
+        except:
+            continue
+
+    df_res = pd.DataFrame(results)
+
+    if df_res.empty:
+        return [], []
+
+    gainers = df_res.sort_values("change", ascending=False).head(10)
+    losers = df_res.sort_values("change", ascending=True).head(10)
+
+    return gainers.to_dict("records"), losers.to_dict("records")
+
+
+# -----------------------
+# UI
+# -----------------------
+
+st.sidebar.subheader("🔥 Scanner PRO MAX")
+
+limit = st.sidebar.slider("Universe Size", 50, 500, 100, step=50)
+
+gainers, losers = scan_market(limit)
+
+def render_list(title, stocks):
+    st.sidebar.write(f"**{title}**")
+
+    if not stocks:
+        st.sidebar.caption("Keine Daten")
+        return
+
+    for i, s in enumerate(stocks):
+        ticker = s["symbol"]
+        change = s["change"]
+
+        if st.sidebar.button(f"{ticker} ({change:.2f}%)", key=f"{title}_{i}_{ticker}"):
+            st.session_state.symbol = ticker
+
+
+render_list("Top Momentum ↑", gainers)
+render_list("Top Breakdown ↓", losers)
 
 # -----------------------
 # SIDEBAR
 # -----------------------
 
-symbol = st.sidebar.text_input("Ticker", value="BTC-USD").upper()
+symbol_input = st.sidebar.text_input(
+    "Ticker",
+    value=st.session_state.symbol
+).upper()
+
+# Nur updaten wenn User wirklich tippt
+if symbol_input != st.session_state.symbol:
+    st.session_state.symbol = symbol_input
 
 period = st.sidebar.selectbox("Period", ["5d","1mo","3mo","6mo","1y"])
 interval = st.sidebar.selectbox("Timeframe", ["1m","5m","15m","1h","4h","1d"])
-
-# -----------------------
-# AUTO SCANNER UI
-# -----------------------
-
-st.sidebar.subheader("🔥 Scanner")
-
-gainers, losers = get_market_movers()
-
-def render_list(title, stocks):
-    st.sidebar.write(f"**{title}**")
     
-    shown = False
-    
-    for s in stocks[:5]:
-        ticker = s.get("symbol", "")
-        change = s.get("regularMarketChangePercent", 0)
-        volume = s.get("regularMarketVolume", 0) or 0
-
-        if volume < 100_000:
-            continue    
-        
-        shown = True
-        
-        if st.sidebar.button(f"{ticker} ({change:.1f}%)", key=ticker):
-            st.session_state["scanner_symbol"] = ticker
-
-    if not shown:
-        st.sidebar.caption("Keine passenden Werte")
-            
-           
-
-render_list("Top Gainer", gainers)
-render_list("Top Loser", losers)
-
- 
-
-if "scanner_symbol" in st.session_state:
-    symbol = st.session_state["scanner_symbol"]
-    
-
+symbol = st.session_state.symbol    
 # -----------------------
 # AUTO PERIOD FIX (BEST PRACTICE)
 # -----------------------
@@ -106,13 +135,14 @@ def auto_period(interval, period):
 
     if interval in valid_map and period not in valid_map[interval]:
         return valid_map[interval][0]  # fallback
+
     return period
 
 period = auto_period(interval, period)
 
 st.sidebar.caption(f"Aktive Kombi: {interval} / {period}")
 
-st_autorefresh(interval=5000, key=f"refresh_{symbol}")  # 10s
+st_autorefresh(interval=5000, key="global_refresh")
 
 show_volume = st.sidebar.checkbox("Volume", True)
 show_rsi = st.sidebar.checkbox("RSI", True)
@@ -416,11 +446,11 @@ def clean_levels(levels,threshold=0.002):
 
 df = df.replace([np.inf, -np.inf], np.nan)
 
-df = df.dropna(subset=[
-    "Close","EMA20","EMA50","VWAP",
-    "RSI","MACD","MACD_signal",
-    "BB_UPPER","BB_LOWER","BB_MID"
-])
+df = df.fillna(method="bfill").fillna(method="ffill")
+
+if len(df) < 50:
+    st.warning("Zu wenig Daten")
+    st.stop()
 
 supports,resistances = detect_levels(df)
 if len(supports) == 0:
