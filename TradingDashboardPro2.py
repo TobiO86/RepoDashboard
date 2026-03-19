@@ -11,7 +11,7 @@ import requests
 # MARKET SCANNER
 # -----------------------
 
-@st.cache_data(ttl=60)
+@st.cache_data(ttl=3)
 def get_market_movers():
     url = "https://query1.finance.yahoo.com/v1/finance/screener/predefined/saved"
     
@@ -46,27 +46,66 @@ st.title("Trading Dashboard PRO")
 # -----------------------
 
 symbol = st.sidebar.text_input("Ticker", value="BTC-USD").upper()
+
 period = st.sidebar.selectbox("Period", ["5d","1mo","3mo","6mo","1y"])
 interval = st.sidebar.selectbox("Timeframe", ["1m","5m","15m","1h","4h","1d"])
+
+# -----------------------
+# AUTO SCANNER UI
+# -----------------------
+
+st.sidebar.subheader("🔥 Scanner")
+
+gainers, losers = get_market_movers()
+
+def render_list(title, stocks):
+    st.sidebar.write(f"**{title}**")
+    
+    for s in stocks[:5]:
+        ticker = s.get("symbol", "")
+        change = s.get("regularMarketChangePercent", 0)
+        volume = s.get("regularMarketVolume", 0)
+
+        if volume < 1_000_000:
+            continue    
+        
+        if st.sidebar.button(f"{ticker} ({change:.1f}%)", key=ticker):
+            st.session_state["scanner_symbol"] = ticker
+            
+           
+
+render_list("Top Gainer", gainers)
+render_list("Top Loser", losers)
+
+ 
+
+if "scanner_symbol" in st.session_state:
+    symbol = st.session_state["scanner_symbol"]
+    
 
 # -----------------------
 # AUTO PERIOD FIX (BEST PRACTICE)
 # -----------------------
 
-if interval == "1m" and period != "1d":
-    period = "1d"
-elif interval == "5m":
-    period = "5d"
-elif interval == "15m":
-    period = "1mo"
-elif interval == "1h":
-    period = "3mo"
-elif interval == "4h":
-    period = "6mo"
+def auto_period(interval, period):
+    valid_map = {
+        "1m": ["1d"],
+        "5m": ["5d"],
+        "15m": ["1mo"],
+        "1h": ["3mo"],
+        "4h": ["6mo"],
+        "1d": ["1y"]
+    }
+
+    if interval in valid_map and period not in valid_map[interval]:
+        return valid_map[interval][0]  # fallback
+    return period
+
+period = auto_period(interval, period)
 
 st.sidebar.caption(f"Aktive Kombi: {interval} / {period}")
 
-st_autorefresh(interval=10000, key=f"refresh_{symbol}")  # 10s
+st_autorefresh(interval=5000, key=f"refresh_{symbol}")  # 10s
 
 show_volume = st.sidebar.checkbox("Volume", True)
 show_rsi = st.sidebar.checkbox("RSI", True)
@@ -190,7 +229,9 @@ df["ShortScore"] = 0
 
 vol_avg = df["Volume"].rolling(20).mean()
 
-for i in range(2, len(df)):
+start = max(2, len(df) - 100)
+
+for i in range(start, len(df)):
     prev = df.iloc[i-1]
     curr = df.iloc[i]
 
@@ -201,7 +242,9 @@ for i in range(2, len(df)):
     if bias_5m == "bull": score_long += 1
     if bias_15m == "bull": score_long += 1
     if curr["delta"] > -vol_avg.iloc[i]: score_long += 1
-
+    if df["SellNewsLong"].iloc[i]:
+        score_long += 2
+        
     # LONG nur wenn echter Reclaim
     if prev["sweep_low"] and curr["Close"] > prev["Low"]:
         score_long += 1
@@ -219,6 +262,9 @@ for i in range(2, len(df)):
     if bias_5m == "bear": score_short += 1
     if bias_15m == "bear": score_short += 1
     if curr["delta"] < vol_avg.iloc[i]: score_short += 1
+    if df["SellNewsShort"].iloc[i]:
+        score_short += 2
+
 
     # SHORT nur wenn echter Rejection
     if prev["sweep_high"] and curr["Close"] < prev["High"]:
@@ -237,7 +283,9 @@ for i in range(2, len(df)):
 df["SellNewsShort"] = False
 df["SellNewsLong"] = False
 
-for i in range(2, len(df)):
+start = max(2, len(df) - 100)
+
+for i in range(start, len(df)):
     prev = df.iloc[i-1]
     curr = df.iloc[i]
 
@@ -269,13 +317,21 @@ SCORE_THRESHOLD = 5
 df["LongSignal"] = False
 df["ShortSignal"] = False
 
+df["ScoreDelta"] = df["LongScore"] - df["ShortScore"]
+
 for i in range(len(df)):
 
     if HIGH_PROB_MODE:
-        if df["LongScore"].iloc[i] >= SCORE_THRESHOLD:
+        if (
+            df["LongScore"].iloc[i] >= SCORE_THRESHOLD and
+            df["ScoreDelta"].iloc[i] > 1
+        ):
             df.at[df.index[i], "LongSignal"] = True
 
-        if df["ShortScore"].iloc[i] >= SCORE_THRESHOLD:
+        if (
+            df["ShortScore"].iloc[i] >= SCORE_THRESHOLD and
+            df["ScoreDelta"].iloc[i] < -1
+        ):
             df.at[df.index[i], "ShortSignal"] = True
 
     else:
@@ -284,6 +340,7 @@ for i in range(len(df)):
 
         if df["ShortScore"].iloc[i] >= 4:
             df.at[df.index[i], "ShortSignal"] = True
+
 
 # -----------------------
 # SL / TP
@@ -580,7 +637,6 @@ if show_volume:
         xanchor="left",
         row=volume_row,
         col=1,
-        yshift=20,
         font=dict(size=14)
     )
 
@@ -641,7 +697,7 @@ if show_macd:
         xanchor="left",
         row=macd_row,
         col=1,
-        yshift=40,
+        yshift=10,
         font=dict(size=14)
     )
 
@@ -653,7 +709,7 @@ if show_macd:
         xanchor="left",
         row=macd_row,
         col=1,
-        yshift=40,
+        yshift=30,
         font=dict(size=14)
     )    
     
@@ -688,7 +744,6 @@ if show_score:
         xanchor="left",
         row=score_row,
         col=1,
-        yshift=20,
         font=dict(size=14)
     )
 
@@ -703,6 +758,13 @@ if show_score:
         yshift=20,
         font=dict(size=14)
     ) 
+    
+    fig.add_trace(go.Scatter(
+        x=df.index,
+        y=df["ScoreDelta"],
+        name="Delta"
+        ), row=score_row, col=1
+    )
     
 # -----------------------
 # LAYOUT (WICHTIG)
