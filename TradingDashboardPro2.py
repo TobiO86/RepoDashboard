@@ -88,9 +88,7 @@ def scan_market(limit=100):
 
 st.sidebar.subheader("🔥 Scanner PRO MAX")
 
-limit = st.sidebar.slider("Universe Size", 50, 500, 100, step=50, key="scanner_limit")
-
-gainers, losers = scan_market(limit)
+st.sidebar.subheader("🔥 Scanner PRO MAX")
 
 def render_list(title, stocks):
     st.sidebar.write(f"**{title}**")
@@ -103,7 +101,10 @@ def render_list(title, stocks):
         ticker = s["symbol"]
         change = s["change"]
 
-        if st.sidebar.button(f"{ticker} ({change:.2f}%)", key=f"{title}_{i}_{ticker}"):
+        if st.sidebar.button(
+            f"{ticker} ({change:.2f}%)",
+            key=f"{title}_{i}_{ticker}"
+        ):
             st.session_state.symbol = ticker
 
 
@@ -119,7 +120,7 @@ with st.sidebar.expander("🔥 Scanner PRO MAX", expanded=False):
     gainers, losers = scan_market(limit)
 
     render_list("Top Momentum ↑", gainers)
-    render_list("Top Breakdown ↓", losers) 
+    render_list("Top Breakdown ↓", losers)
 
 # -----------------------
 # SIDEBAR
