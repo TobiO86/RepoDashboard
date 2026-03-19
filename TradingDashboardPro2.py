@@ -66,7 +66,7 @@ def render_list(title, stocks):
         change = s.get("regularMarketChangePercent", 0)
         volume = s.get("regularMarketVolume", 0)
 
-        if volume < 1_000_000:
+        if volume < 100_000:
             continue    
         
         if st.sidebar.button(f"{ticker} ({change:.1f}%)", key=ticker):
