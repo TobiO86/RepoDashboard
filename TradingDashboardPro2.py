@@ -88,8 +88,6 @@ def scan_market(limit=100):
 
 st.sidebar.subheader("🔥 Scanner PRO MAX")
 
-st.sidebar.subheader("🔥 Scanner PRO MAX")
-
 def render_list(title, stocks):
     st.sidebar.write(f"**{title}**")
 
@@ -165,8 +163,6 @@ period = auto_period(interval, period)
 
 st.sidebar.caption(f"Aktive Kombi: {interval} / {period}")
 
-st_autorefresh(interval=5000, key="global_refresh")
-
 show_volume = st.sidebar.checkbox("Volume", True)
 show_rsi = st.sidebar.checkbox("RSI", True)
 show_macd = st.sidebar.checkbox("MACD", True)
@@ -175,14 +171,16 @@ show_macd = st.sidebar.checkbox("MACD", True)
 # DATA
 # -----------------------
 
-@st.cache_data(ttl=10)
-def load_data(symbol,period,interval):
-    df = yf.download(symbol,period=period,interval=interval, progress=False)
-    if isinstance(df.columns,pd.MultiIndex):
+refresh_counter = st_autorefresh(interval=5000, key=f"refresh_{symbol}")
+
+@st.cache_data(ttl=5)
+def load_data(symbol, period, interval, refresh_counter):
+    df = yf.download(symbol, period=period, interval=interval, progress=False)
+    if isinstance(df.columns, pd.MultiIndex):
         df.columns = df.columns.get_level_values(0)
     return df.dropna()
 
-df = load_data(symbol,period,interval)
+df = load_data(symbol, period, interval, refresh_counter)
 if len(df) == 0:
     st.stop()
 
@@ -839,7 +837,7 @@ fig.update_layout(
     template="plotly_dark",
     hovermode="x unified",
     xaxis_rangeslider_visible=False,
-    uirevision="constant"
+    uirevision=symbol   # 🔥 statt "constant"
 )
 
 st.markdown("""
