@@ -88,7 +88,7 @@ def scan_market(limit=100):
 
 st.sidebar.subheader("🔥 Scanner PRO MAX")
 
-limit = st.sidebar.slider("Universe Size", 50, 500, 100, step=50)
+limit = st.sidebar.slider("Universe Size", 50, 500, 100, step=50, key="scanner_limit")
 
 gainers, losers = scan_market(limit)
 
@@ -109,7 +109,12 @@ def render_list(title, stocks):
 
 with st.sidebar.expander("🔥 Scanner PRO MAX", expanded=False):
     
-    limit = st.slider("Universe Size", 50, 500, 100, step=50)
+    limit = st.slider(
+        "Universe Size",
+        50, 500, 100,
+        step=50,
+        key="scanner_limit"
+    )
 
     gainers, losers = scan_market(limit)
 
@@ -122,15 +127,16 @@ with st.sidebar.expander("🔥 Scanner PRO MAX", expanded=False):
 
 symbol_input = st.sidebar.text_input(
     "Ticker",
-    value=st.session_state.symbol
+    value=st.session_state.symbol,
+    key="ticker_input"
 ).upper()
 
 # Nur updaten wenn User wirklich tippt
 if symbol_input != st.session_state.symbol:
     st.session_state.symbol = symbol_input
 
-period = st.sidebar.selectbox("Period", ["5d","1mo","3mo","6mo","1y"])
-interval = st.sidebar.selectbox("Timeframe", ["1m","5m","15m","1h","4h","1d"])
+period = st.sidebar.selectbox("Period", ["5d","1mo","3mo","6mo","1y"],key="period_select")
+interval = st.sidebar.selectbox("Timeframe", ["1m","5m","15m","1h","4h","1d"],key="interval_select")
     
 symbol = st.session_state.symbol   
 
@@ -842,6 +848,7 @@ st.markdown("""
 }
 </style>
 """, unsafe_allow_html=True)
+
 st.plotly_chart(
     fig,
     use_container_width=True
