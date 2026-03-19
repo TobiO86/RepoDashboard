@@ -7,6 +7,7 @@ from streamlit_autorefresh import st_autorefresh
 import numpy as np
 import requests
 
+st.set_page_config(layout="wide")  # 👈 ganz oben!
 
 if "symbol" not in st.session_state:
     st.session_state.symbol = "BTC-USD"
@@ -106,8 +107,14 @@ def render_list(title, stocks):
             st.session_state.symbol = ticker
 
 
-render_list("Top Momentum ↑", gainers)
-render_list("Top Breakdown ↓", losers)
+with st.sidebar.expander("🔥 Scanner PRO MAX", expanded=False):
+    
+    limit = st.slider("Universe Size", 50, 500, 100, step=50)
+
+    gainers, losers = scan_market(limit)
+
+    render_list("Top Momentum ↑", gainers)
+    render_list("Top Breakdown ↓", losers) 
 
 # -----------------------
 # SIDEBAR
@@ -125,7 +132,9 @@ if symbol_input != st.session_state.symbol:
 period = st.sidebar.selectbox("Period", ["5d","1mo","3mo","6mo","1y"])
 interval = st.sidebar.selectbox("Timeframe", ["1m","5m","15m","1h","4h","1d"])
     
-symbol = st.session_state.symbol    
+symbol = st.session_state.symbol   
+
+
 # -----------------------
 # AUTO PERIOD FIX (BEST PRACTICE)
 # -----------------------
@@ -816,18 +825,26 @@ if show_score:
 # LAYOUT (WICHTIG)
 # -----------------------
 
+height = 400 + (rows * 250)
+
 fig.update_layout(
-    height=1100,  # 👈 größer!
+    height=height,
     template="plotly_dark",
     hovermode="x unified",
     xaxis_rangeslider_visible=False,
     uirevision="constant"
 )
 
+st.markdown("""
+<style>
+[data-testid="stSidebar"] {
+    width: 320px;
+}
+</style>
+""", unsafe_allow_html=True)
 st.plotly_chart(
     fig,
-    use_container_width=True,
-    key=f"chart_{symbol}_{interval}_{period}"
+    use_container_width=True
 )
 
 # -----------------------
