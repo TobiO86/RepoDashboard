@@ -61,16 +61,23 @@ gainers, losers = get_market_movers()
 def render_list(title, stocks):
     st.sidebar.write(f"**{title}**")
     
+    shown = False
+    
     for s in stocks[:5]:
         ticker = s.get("symbol", "")
         change = s.get("regularMarketChangePercent", 0)
-        volume = s.get("regularMarketVolume", 0)
+        volume = s.get("regularMarketVolume", 0) or 0
 
         if volume < 100_000:
             continue    
         
+        shown = True
+        
         if st.sidebar.button(f"{ticker} ({change:.1f}%)", key=ticker):
             st.session_state["scanner_symbol"] = ticker
+
+    if not shown:
+        st.sidebar.caption("Keine passenden Werte")
             
            
 
