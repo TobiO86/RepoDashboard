@@ -4,3 +4,5 @@ pandas
 
 plotly
 streamlit_autorefresh
+lxml
+html5lib
