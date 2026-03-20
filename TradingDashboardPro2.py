@@ -3,7 +3,6 @@ import yfinance as yf
 import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
-from streamlit_autorefresh import st_autorefresh
 import numpy as np
 import requests
 
@@ -130,6 +129,12 @@ symbol_input = st.sidebar.text_input(
     key="ticker_input"
 ).upper()
 
+st.sidebar.markdown("---")
+
+if st.sidebar.button("🔄 Refresh Data"):
+    st.cache_data.clear()
+    st.rerun()
+    
 # Nur updaten wenn User wirklich tippt
 if symbol_input != st.session_state.symbol:
     st.session_state.symbol = symbol_input
@@ -171,8 +176,6 @@ show_macd = st.sidebar.checkbox("MACD", True)
 # DATA
 # -----------------------
 
-refresh_counter = st_autorefresh(interval=5000, key=f"refresh_{symbol}")
-
 @st.cache_data(ttl=5)
 def load_data(symbol, period, interval, refresh_counter):
     df = yf.download(symbol, period=period, interval=interval, progress=False)
@@ -180,7 +183,7 @@ def load_data(symbol, period, interval, refresh_counter):
         df.columns = df.columns.get_level_values(0)
     return df.dropna()
 
-df = load_data(symbol, period, interval, refresh_counter)
+df = load_data(symbol, period, interval)
 if len(df) == 0:
     st.stop()
 
@@ -837,7 +840,7 @@ fig.update_layout(
     template="plotly_dark",
     hovermode="x unified",
     xaxis_rangeslider_visible=False,
-    uirevision=symbol   # 🔥 statt "constant"
+    uirevision="constant"
 )
 
 st.markdown("""
