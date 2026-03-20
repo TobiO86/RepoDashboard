@@ -177,7 +177,7 @@ show_macd = st.sidebar.checkbox("MACD", True)
 # -----------------------
 
 @st.cache_data(ttl=5)
-def load_data(symbol, period, interval, refresh_counter):
+def load_data(symbol, period, interval, _version=2):
     df = yf.download(symbol, period=period, interval=interval, progress=False)
     if isinstance(df.columns, pd.MultiIndex):
         df.columns = df.columns.get_level_values(0)
