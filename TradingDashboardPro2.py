@@ -991,76 +991,9 @@ fig.update_layout(
 
 st.markdown("""
 <style>
-
-/* -------- MAIN DARK -------- */
-.stApp {
-    background-color: #0e1117;
+[data-testid="stSidebar"] {
+    width: 320px;
 }
-
-section.main {
-    background-color: #0e1117;
-}
-
-.block-container {
-    background-color: #0e1117;
-}
-
-/* Text Main */
-section.main * {
-    color: #e6e6e6;
-}
-
-/* -------- SIDEBAR LIGHT -------- */
-section[data-testid="stSidebar"] {
-    background-color: #f5f5f5 !important;
-}
-
-/* Sidebar Text */
-section[data-testid="stSidebar"] * {
-    color: #111 !important;
-}
-
-/* Sidebar Inputs */
-section[data-testid="stSidebar"] input,
-section[data-testid="stSidebar"] textarea,
-section[data-testid="stSidebar"] div[data-baseweb="select"] {
-    background-color: white !important;
-    color: black !important;
-}
-
-/* -------- COMPONENTS -------- */
-
-/* Metrics (Main) */
-[data-testid="metric-container"] {
-    background-color: #111827;
-    padding: 10px;
-    border-radius: 10px;
-}
-
-/* Buttons (Main) */
-section.main .stButton>button {
-    background-color: #1f2937;
-    color: white;
-    border-radius: 8px;
-}
-
-/* Buttons Sidebar */
-section[data-testid="stSidebar"] .stButton>button {
-    background-color: #e5e7eb;
-    color: black;
-}
-
-/* Dataframe */
-[data-testid="stDataFrame"] {
-    background-color: #0e1117;
-}
-
-/* Expander */
-.streamlit-expanderHeader {
-    background-color: #111827;
-    color: white;
-}
-
 </style>
 """, unsafe_allow_html=True)
 
