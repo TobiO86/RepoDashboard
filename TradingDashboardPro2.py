@@ -575,21 +575,37 @@ col1, col2, col3 = st.columns(3)
 @st.cache_data(ttl=3600)
 def get_company_name(symbol):
     try:
-        ticker = yf.Ticker(symbol)
-        info = ticker.fast_info  # schneller
-        name = ticker.info.get("shortName", None)
+        t = yf.Ticker(symbol)
 
-        if name:
-            return name
-        else:
+        # Versuch 1 (meist korrekt)
+        name = t.info.get("shortName")
+
+        # Fallbacks
+        if not name:
+            name = t.info.get("longName")
+
+        if not name:
             return symbol
+
+        # Schutz gegen "NVDA" -> kein echter Name
+        if name.upper() == symbol:
+            return symbol
+
+        return name
+
     except:
         return symbol
     
 name = get_company_name(symbol)
 
+name = get_company_name(symbol)
+
+display_name = symbol
+if name != symbol:
+    display_name = f"{name} ({symbol})"
+
 col1.metric(
-    f"{name} ({symbol})",
+    display_name,
     f"{current:.2f}",
     f"{change:.2f} ({change_percent:.2f}%)"
 )
@@ -1061,6 +1077,25 @@ section.main .stButton>button {
 section[data-testid="stSidebar"] .stButton>button {
     background-color: #e5e7eb;
     color: black;
+}
+
+/* Metric Labels (z.B. Price, VWAP) */
+[data-testid="stMetricLabel"] {
+    color: #9ca3af !important;
+    font-size: 14px !important;
+}
+
+/* Metric Value (Preis) */
+[data-testid="stMetricValue"] {
+    color: #ffffff !important;
+    font-size: 28px !important;
+    font-weight: bold !important;
+}
+
+/* Metric Delta */
+[data-testid="stMetricDelta"] {
+    color: #22c55e !important;
+    font-size: 14px !important;
 }
 
 </style>
