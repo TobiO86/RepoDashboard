@@ -991,8 +991,40 @@ fig.update_layout(
 
 st.markdown("""
 <style>
+/* Main background */
+html, body, [class*="css"]  {
+    background-color: #0e1117;
+    color: #e6e6e6;
+}
+
+/* Sidebar */
 [data-testid="stSidebar"] {
-    width: 320px;
+    background-color: #0b0f14;
+}
+
+/* Buttons */
+.stButton>button {
+    background-color: #1f2937;
+    color: white;
+    border-radius: 8px;
+}
+
+/* Metrics */
+[data-testid="metric-container"] {
+    background-color: #111827;
+    padding: 10px;
+    border-radius: 10px;
+}
+
+/* Dataframe */
+[data-testid="stDataFrame"] {
+    background-color: #0e1117;
+}
+
+/* Expander */
+.streamlit-expanderHeader {
+    background-color: #111827;
+    color: white;
 }
 </style>
 """, unsafe_allow_html=True)
