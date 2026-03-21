@@ -991,29 +991,63 @@ fig.update_layout(
 
 st.markdown("""
 <style>
-/* Main background */
-html, body, [class*="css"]  {
+
+/* -------- MAIN DARK -------- */
+.stApp {
     background-color: #0e1117;
+}
+
+section.main {
+    background-color: #0e1117;
+}
+
+.block-container {
+    background-color: #0e1117;
+}
+
+/* Text Main */
+section.main * {
     color: #e6e6e6;
 }
 
-/* Sidebar */
-[data-testid="stSidebar"] {
-    background-color: #0b0f14;
+/* -------- SIDEBAR LIGHT -------- */
+section[data-testid="stSidebar"] {
+    background-color: #f5f5f5 !important;
 }
 
-/* Buttons */
-.stButton>button {
+/* Sidebar Text */
+section[data-testid="stSidebar"] * {
+    color: #111 !important;
+}
+
+/* Sidebar Inputs */
+section[data-testid="stSidebar"] input,
+section[data-testid="stSidebar"] textarea,
+section[data-testid="stSidebar"] div[data-baseweb="select"] {
+    background-color: white !important;
+    color: black !important;
+}
+
+/* -------- COMPONENTS -------- */
+
+/* Metrics (Main) */
+[data-testid="metric-container"] {
+    background-color: #111827;
+    padding: 10px;
+    border-radius: 10px;
+}
+
+/* Buttons (Main) */
+section.main .stButton>button {
     background-color: #1f2937;
     color: white;
     border-radius: 8px;
 }
 
-/* Metrics */
-[data-testid="metric-container"] {
-    background-color: #111827;
-    padding: 10px;
-    border-radius: 10px;
+/* Buttons Sidebar */
+section[data-testid="stSidebar"] .stButton>button {
+    background-color: #e5e7eb;
+    color: black;
 }
 
 /* Dataframe */
@@ -1026,6 +1060,7 @@ html, body, [class*="css"]  {
     background-color: #111827;
     color: white;
 }
+
 </style>
 """, unsafe_allow_html=True)
 
