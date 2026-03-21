@@ -596,29 +596,30 @@ def get_company_name(symbol):
     try:
         t = yf.Ticker(symbol)
 
-        # 🔥 direkt info nutzen (fast_info reicht nicht)
+        # Versuch 1: info
         info = t.info
-
         name = info.get("shortName") or info.get("longName")
 
-        if name and name.upper() != symbol:
+        if name:
             return name
+
+        # Versuch 2: history metadata (stabiler!)
+        hist = t.history(period="1d")
+        if hasattr(hist, "attrs"):
+            meta = hist.attrs
+            name = meta.get("shortName") or meta.get("longName")
+            if name:
+                return name
 
         return symbol
 
-    except:
+    except Exception as e:
+        print("Name error:", e)
         return symbol
     
 name = get_company_name(symbol)
 
-if name != symbol:
-    display_name = f"{name} ({symbol})"
-else:
-    display_name = symbol
-
-display_name = symbol
-if name != symbol:
-    display_name = f"{name} ({symbol})"
+display_name = f"{name} ({symbol})" if name != symbol else symbol
 
 col1.metric(
     display_name,
