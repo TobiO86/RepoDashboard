@@ -31,7 +31,7 @@ def get_sp500_symbols():
 
 @st.cache_data(ttl=60)
 def scan_market(limit=100):
-    symbols = get_sp500_symbols()[:limit]  # ⚡ limit für Performance
+    symbols = get_sp500_symbols()[:limit]
     results = []
 
     data = yf.download(
@@ -49,23 +49,106 @@ def scan_market(limit=100):
                 continue
 
             df = data[s].dropna()
-
-            if len(df) < 20:
+            if len(df) < 50:
                 continue
 
-            last = df.iloc[-1]
-            prev = df.iloc[-2]
+            # -----------------------
+            # LIGHT INDICATORS
+            # -----------------------
+            df["VWAP"] = (df["Close"] * df["Volume"]).cumsum() / df["Volume"].cumsum()
+            df["Volume_MA"] = df["Volume"].rolling(20).mean()
 
-            change = (last["Close"] - prev["Close"]) / prev["Close"] * 100
-            vol = last["Volume"]
+            ema20 = df["Close"].ewm(span=20).mean()
+            ema50 = df["Close"].ewm(span=50).mean()
 
-            # 🔥 Core Filter
-            if vol > 300_000 and abs(change) > 0.7:
-                results.append({
-                    "symbol": s,
-                    "change": change,
-                    "volume": vol
-                })
+            price = df["Close"].iloc[-1]
+            vwap = df["VWAP"].iloc[-1]
+            rsi = df["Close"].pct_change(14).iloc[-1] * 100
+
+            volume = df["Volume"].iloc[-1]
+            volume_ma = df["Volume_MA"].iloc[-1]
+
+            vol_spike = volume > 1.5 * volume_ma
+
+            # -----------------------
+            # LIQUIDITY (simplified sweep)
+            # -----------------------
+            high_max = df["High"].rolling(20).max()
+            low_min = df["Low"].rolling(20).min()
+
+            sweep_high = df["High"].iloc[-2] > high_max.iloc[-3]
+            sweep_low = df["Low"].iloc[-2] < low_min.iloc[-3]
+
+            # -----------------------
+            # TREND (HTF approximation)
+            # -----------------------
+            trend_bull = ema20.iloc[-1] > ema50.iloc[-1]
+            trend_bear = ema20.iloc[-1] < ema50.iloc[-1]
+
+            # -----------------------
+            # SIGNAL APPROX (dein System!)
+            # -----------------------
+            long_score = 0
+            short_score = 0
+
+            # LONG
+            if sweep_low: long_score += 1
+            if price > vwap: long_score += 1
+            if vol_spike: long_score += 1
+            if trend_bull: long_score += 1
+            if rsi > 0: long_score += 1
+
+            # Liquidity reclaim boost
+            if sweep_low and price > vwap:
+                long_score += 2
+
+            # SHORT
+            if sweep_high: short_score += 1
+            if price < vwap: short_score += 1
+            if vol_spike: short_score += 1
+            if trend_bear: short_score += 1
+            if rsi < 0: short_score += 1
+
+            # Liquidity rejection boost
+            if sweep_high and price < vwap:
+                short_score += 2
+
+            score_delta = long_score - short_score
+
+            # -----------------------
+            # FILTER (wie dein Chart)
+            # -----------------------
+            setup = None
+            final_score = 0
+
+            if long_score >= 4 and score_delta > 1:
+                setup = "LONG"
+                final_score = long_score
+
+            elif short_score >= 4 and score_delta < -1:
+                setup = "SHORT"
+                final_score = short_score
+
+            # Early signal (wichtig!)
+            elif long_score >= 3 and score_delta > 0:
+                setup = "EARLY LONG"
+                final_score = long_score
+
+            elif short_score >= 3 and score_delta < 0:
+                setup = "EARLY SHORT"
+                final_score = short_score
+
+            if setup is None:
+                continue
+
+            results.append({
+                "symbol": s,
+                "price": round(price, 2),
+                "score": final_score,
+                "delta": score_delta,
+                "setup": setup,
+                "volume": int(volume)
+            })
 
         except:
             continue
@@ -75,10 +158,12 @@ def scan_market(limit=100):
     if df_res.empty:
         return [], []
 
-    gainers = df_res.sort_values("change", ascending=False).head(10)
-    losers = df_res.sort_values("change", ascending=True).head(10)
+    df_res = df_res.sort_values("score", ascending=False)
 
-    return gainers.to_dict("records"), losers.to_dict("records")
+    return (
+        df_res.head(10).to_dict("records"),
+        df_res.tail(10).to_dict("records")
+    )
 
 
 # -----------------------
@@ -96,12 +181,10 @@ def render_list(title, stocks):
 
     for i, s in enumerate(stocks):
         ticker = s["symbol"]
-        change = s["change"]
 
-        if st.sidebar.button(
-            f"{ticker} ({change:.2f}%)",
-            key=f"{title}_{i}_{ticker}"
-        ):
+        label = f"{ticker} | {s['setup']} | ⭐{s['score']} Δ{s['delta']}"
+
+        if st.sidebar.button(label, key=f"{title}_{i}_{ticker}"):
             st.session_state.symbol = ticker
 
 
