@@ -18,14 +18,63 @@ if "symbol" not in st.session_state:
 @st.cache_data(ttl=86400)
 def get_sp500_symbols():
     return [
+
+        # -----------------------
+        # MEGA CAPS (Stabilität)
+        # -----------------------
         "AAPL","MSFT","NVDA","AMZN","META","GOOGL","TSLA",
-        "BRK-B","UNH","XOM","JPM","V","LLY","AVGO","MA",
-        "HD","PG","COST","MRK","ABBV","PEP","KO","ADBE",
-        "CRM","WMT","BAC","NFLX","AMD","TMO","CVX","ACN",
-        "DHR","LIN","MCD","ABT","ORCL","WFC","CSCO","TXN",
-        "VZ","PM","INTU","QCOM","IBM","AMGN","CAT","GE",
-        "DIS","NOW","GS","ISRG","RTX","SPGI","BLK","MDT",
-        "BA","PLD","BKNG","DE","AXP","GILD","ADP"
+        "AVGO","TSM","AMD","NFLX","INTC","ADBE","CRM",
+
+        # -----------------------
+        # HIGH BETA / TRADER STOCKS
+        # -----------------------
+        "COIN","PLTR","RIVN","SOFI","SNAP","ROKU",
+        "UPST","AFRM","DKNG","SHOP","SQ","PYPL",
+
+        # -----------------------
+        # AI / MOMENTUM / HALBLEITER
+        # -----------------------
+        "SMCI","ARM","MU","ASML","LRCX","KLAC","MRVL",
+
+        # -----------------------
+        # FINANCIALS (LIQUID)
+        # -----------------------
+        "JPM","GS","BAC","MS","SCHW",
+
+        # -----------------------
+        # ENERGY (VOLATIL)
+        # -----------------------
+        "XOM","CVX","OXY","SLB","HAL",
+
+        # -----------------------
+        # HEALTHCARE (MOVES OFTEN NEWS DRIVEN)
+        # -----------------------
+        "LLY","UNH","JNJ","MRNA","BNTX",
+
+        # -----------------------
+        # INDUSTRIAL / MACRO SENSITIVE
+        # -----------------------
+        "CAT","BA","GE","DE","NOC",
+
+        # -----------------------
+        # ETFS (SEHR WICHTIG!)
+        # -----------------------
+        "SPY","QQQ","IWM","DIA","XLF","XLK","XLE",
+
+        # -----------------------
+        # INDIZES
+        # -----------------------
+        "^GSPC","^NDX","^DJI",
+
+        # -----------------------
+        # VOLATILITY / HEDGE
+        # -----------------------
+        "VIXY","UVXY",
+
+        # -----------------------
+        # CRYPTO
+        # -----------------------
+        "BTC-USD","ETH-USD","SOL-USD"
     ]
 
 
@@ -523,7 +572,21 @@ rsi_last = df["RSI"].iloc[-1]
 
 col1, col2, col3 = st.columns(3)
 
-col1.metric("Price", f"{current:.2f}", f"{change:.2f} ({change_percent:.2f}%)")
+@st.cache_data(ttl=3600)
+def get_company_name(symbol):
+    try:
+        return yf.Ticker(symbol).info.get("shortName", symbol)
+    except:
+        return symbol
+    
+name = get_company_name(symbol)
+
+col1.metric(
+    f"{name} ({symbol})",
+    f"{current:.2f}",
+    f"{change:.2f} ({change_percent:.2f}%)"
+)
+
 col2.metric("VWAP", f"{vwap_last:.2f}")
 col3.metric("RSI", f"{rsi_last:.2f}")
 
