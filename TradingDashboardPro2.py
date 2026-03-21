@@ -595,18 +595,16 @@ col1, col2, col3 = st.columns(3)
 def get_company_name(symbol):
     try:
         t = yf.Ticker(symbol)
-        info = t.fast_info  # 🔥 schneller & stabiler
 
-        # fallback auf info nur wenn nötig
-        name = getattr(t, "info", {}).get("shortName", None)
+        # 🔥 direkt info nutzen (fast_info reicht nicht)
+        info = t.info
 
-        if not name:
-            return symbol
+        name = info.get("shortName") or info.get("longName")
 
-        if name.upper() == symbol:
-            return symbol
+        if name and name.upper() != symbol:
+            return name
 
-        return name
+        return symbol
 
     except:
         return symbol
