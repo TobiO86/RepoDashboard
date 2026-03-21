@@ -1065,35 +1065,59 @@ for i in range(1, rows+1):
 st.markdown("""
 <style>
 
-/* -------- METRIC CONTAINER -------- */
+/* -------- GLOBAL DARK MODE -------- */
+html, body, [class*="css"]  {
+    background-color: #0e1117 !important;
+    color: #e6e6e6 !important;
+}
+
+/* MAIN CONTAINER */
+.stApp {
+    background-color: #0e1117 !important;
+}
+
+/* BLOCK CONTAINER */
+.block-container {
+    background-color: #0e1117 !important;
+}
+
+/* TEXT FIX */
+h1, h2, h3, h4, h5, h6, p, span, label {
+    color: #e6e6e6 !important;
+}
+
+/* SIDEBAR */
+section[data-testid="stSidebar"] {
+    background-color: #111827 !important;
+}
+
+section[data-testid="stSidebar"] * {
+    color: #e6e6e6 !important;
+}
+
+/* INPUTS */
+input, textarea, div[data-baseweb="select"] {
+    background-color: #1f2937 !important;
+    color: #e6e6e6 !important;
+}
+
+/* BUTTONS */
+.stButton>button {
+    background-color: #1f2937 !important;
+    color: #e6e6e6 !important;
+    border-radius: 8px;
+}
+
+/* METRICS */
 [data-testid="metric-container"] {
     background-color: #111827;
     padding: 12px;
     border-radius: 12px;
 }
 
-/* Label (Price, VWAP, RSI) */
-[data-testid="stMetricLabel"] {
-    color: #9ca3af !important;
-    font-size: 13px !important;
-}
-
-/* VALUE (Preis groß) */
-[data-testid="stMetricValue"] {
-    color: #ffffff !important;
-    font-size: 32px !important;
-    font-weight: 600 !important;
-}
-
-/* Delta */
-[data-testid="stMetricDelta"] {
-    font-size: 14px !important;
-    font-weight: 500 !important;
-}
-
-/* Force contrast fix */
-[data-testid="stMetric"] {
-    color: white !important;
+/* REMOVE WHITE BLOCKS */
+[data-testid="stVerticalBlock"] {
+    background-color: transparent !important;
 }
 
 </style>
