@@ -315,16 +315,25 @@ def load_data(symbol, period, interval, _version=2):
         df.columns = df.columns.get_level_values(0)
     return df.dropna()
 
-df = load_data(symbol, period, interval)
 
 
 def normalize_df(df):
-    for col in ["Open","High","Low","Close","Volume"]:
-        if col in df and isinstance(df[col], pd.DataFrame):
-            df[col] = df[col].iloc[:, 0]
+    # MultiIndex komplett entfernen
+    if isinstance(df.columns, pd.MultiIndex):
+        df.columns = df.columns.get_level_values(0)
+
+    # Sicherstellen: alle OHLCV sind Series
+    for col in ["Open", "High", "Low", "Close", "Volume"]:
+        if col in df.columns:
+            if isinstance(df[col], pd.DataFrame):
+                df[col] = df[col].squeeze()  # <- WICHTIG
+
     return df
 
+df = load_data(symbol, period, interval)
+
 df = normalize_df(df)
+df = df.loc[:, ~df.columns.duplicated()]
 
 if len(df) == 0:
     st.stop()
