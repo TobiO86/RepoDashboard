@@ -316,6 +316,16 @@ def load_data(symbol, period, interval, _version=2):
     return df.dropna()
 
 df = load_data(symbol, period, interval)
+
+
+def normalize_df(df):
+    for col in ["Open","High","Low","Close","Volume"]:
+        if col in df and isinstance(df[col], pd.DataFrame):
+            df[col] = df[col].iloc[:, 0]
+    return df
+
+df = normalize_df(df)
+
 if len(df) == 0:
     st.stop()
 
@@ -572,22 +582,18 @@ rsi_last = df["RSI"].iloc[-1]
 
 col1, col2, col3 = st.columns(3)
 
-@st.cache_data(ttl=3600)
+@st.cache_data(ttl=86400)
 def get_company_name(symbol):
     try:
         t = yf.Ticker(symbol)
+        info = t.fast_info  # 🔥 schneller & stabiler
 
-        # Versuch 1 (meist korrekt)
-        name = t.info.get("shortName")
-
-        # Fallbacks
-        if not name:
-            name = t.info.get("longName")
+        # fallback auf info nur wenn nötig
+        name = getattr(t, "info", {}).get("shortName", None)
 
         if not name:
             return symbol
 
-        # Schutz gegen "NVDA" -> kein echter Name
         if name.upper() == symbol:
             return symbol
 
@@ -598,7 +604,10 @@ def get_company_name(symbol):
     
 name = get_company_name(symbol)
 
-name = get_company_name(symbol)
+if name != symbol:
+    display_name = f"{name} ({symbol})"
+else:
+    display_name = symbol
 
 display_name = symbol
 if name != symbol:
@@ -1014,12 +1023,14 @@ fig.update_layout(
 
     xaxis=dict(
         showgrid=False,
-        color="#e6e6e6"
+        color="#e6e6e6",
+        zeroline=False
     ),
     yaxis=dict(
         showgrid=True,
         gridcolor="#1f2937",
-        color="#e6e6e6"
+        color="#e6e6e6",
+        zeroline=False
     ),
 
     height=height,
@@ -1028,74 +1039,52 @@ fig.update_layout(
     uirevision="constant"
 )
 
+# 🔥 WICHTIG: ALLE SUBPLOTS überschreiben
+for i in range(1, rows+1):
+    fig.update_xaxes(
+        showgrid=False,
+        color="#e6e6e6",
+        row=i, col=1
+    )
+    fig.update_yaxes(
+        showgrid=True,
+        gridcolor="#1f2937",
+        color="#e6e6e6",
+        row=i, col=1
+    )
+
 st.markdown("""
 <style>
 
-/* -------- MAIN DARK -------- */
-.stApp, .main, .block-container {
-    background-color: #0e1117;
-}
-
-/* NUR main text hell */
-section.main {
-    color: #e6e6e6;
-}
-
-/* -------- SIDEBAR LIGHT -------- */
-section[data-testid="stSidebar"] {
-    background-color: #f5f5f5 !important;
-}
-
-/* Sidebar Text wieder dunkel */
-section[data-testid="stSidebar"] * {
-    color: #111 !important;
-}
-
-/* Inputs fix */
-section[data-testid="stSidebar"] input,
-section[data-testid="stSidebar"] textarea,
-section[data-testid="stSidebar"] div[data-baseweb="select"] {
-    background-color: white !important;
-    color: black !important;
-}
-
-/* Metrics */
+/* -------- METRIC CONTAINER -------- */
 [data-testid="metric-container"] {
     background-color: #111827;
-    padding: 10px;
-    border-radius: 10px;
-    color: white;
+    padding: 12px;
+    border-radius: 12px;
 }
 
-/* Buttons main */
-section.main .stButton>button {
-    background-color: #1f2937;
-    color: white;
-}
-
-/* Buttons sidebar */
-section[data-testid="stSidebar"] .stButton>button {
-    background-color: #e5e7eb;
-    color: black;
-}
-
-/* Metric Labels (z.B. Price, VWAP) */
+/* Label (Price, VWAP, RSI) */
 [data-testid="stMetricLabel"] {
     color: #9ca3af !important;
-    font-size: 14px !important;
+    font-size: 13px !important;
 }
 
-/* Metric Value (Preis) */
+/* VALUE (Preis groß) */
 [data-testid="stMetricValue"] {
     color: #ffffff !important;
-    font-size: 28px !important;
-    font-weight: bold !important;
+    font-size: 32px !important;
+    font-weight: 600 !important;
 }
 
-/* Metric Delta */
+/* Delta */
 [data-testid="stMetricDelta"] {
-    color: #22c55e !important;
     font-size: 14px !important;
+    font-weight: 500 !important;
+}
+
+/* Force contrast fix */
+[data-testid="stMetric"] {
+    color: white !important;
 }
 
 </style>
