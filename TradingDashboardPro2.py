@@ -575,7 +575,14 @@ col1, col2, col3 = st.columns(3)
 @st.cache_data(ttl=3600)
 def get_company_name(symbol):
     try:
-        return yf.Ticker(symbol).info.get("shortName", symbol)
+        ticker = yf.Ticker(symbol)
+        info = ticker.fast_info  # schneller
+        name = ticker.info.get("shortName", None)
+
+        if name:
+            return name
+        else:
+            return symbol
     except:
         return symbol
     
@@ -982,8 +989,24 @@ if show_score:
 height = 400 + (rows * 250)
 
 fig.update_layout(
-    height=height,
     template="plotly_dark",
+
+    paper_bgcolor="#0e1117",
+    plot_bgcolor="#0e1117",
+
+    font=dict(color="#e6e6e6"),
+
+    xaxis=dict(
+        showgrid=False,
+        color="#e6e6e6"
+    ),
+    yaxis=dict(
+        showgrid=True,
+        gridcolor="#1f2937",
+        color="#e6e6e6"
+    ),
+
+    height=height,
     hovermode="x unified",
     xaxis_rangeslider_visible=False,
     uirevision="constant"
@@ -993,20 +1016,12 @@ st.markdown("""
 <style>
 
 /* -------- MAIN DARK -------- */
-.stApp {
+.stApp, .main, .block-container {
     background-color: #0e1117;
 }
 
+/* NUR main text hell */
 section.main {
-    background-color: #0e1117;
-}
-
-.block-container {
-    background-color: #0e1117;
-}
-
-/* Text Main */
-section.main * {
     color: #e6e6e6;
 }
 
@@ -1015,12 +1030,12 @@ section[data-testid="stSidebar"] {
     background-color: #f5f5f5 !important;
 }
 
-/* Sidebar Text */
+/* Sidebar Text wieder dunkel */
 section[data-testid="stSidebar"] * {
     color: #111 !important;
 }
 
-/* Sidebar Inputs */
+/* Inputs fix */
 section[data-testid="stSidebar"] input,
 section[data-testid="stSidebar"] textarea,
 section[data-testid="stSidebar"] div[data-baseweb="select"] {
@@ -1028,37 +1043,24 @@ section[data-testid="stSidebar"] div[data-baseweb="select"] {
     color: black !important;
 }
 
-/* -------- COMPONENTS -------- */
-
-/* Metrics (Main) */
+/* Metrics */
 [data-testid="metric-container"] {
     background-color: #111827;
     padding: 10px;
     border-radius: 10px;
+    color: white;
 }
 
-/* Buttons (Main) */
+/* Buttons main */
 section.main .stButton>button {
     background-color: #1f2937;
     color: white;
-    border-radius: 8px;
 }
 
-/* Buttons Sidebar */
+/* Buttons sidebar */
 section[data-testid="stSidebar"] .stButton>button {
     background-color: #e5e7eb;
     color: black;
-}
-
-/* Dataframe */
-[data-testid="stDataFrame"] {
-    background-color: #0e1117;
-}
-
-/* Expander */
-.streamlit-expanderHeader {
-    background-color: #111827;
-    color: white;
 }
 
 </style>
