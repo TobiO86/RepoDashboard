@@ -1132,18 +1132,16 @@ fig.update_layout(
     uirevision="constant",
     
     legend=dict(
-        font=dict(
-            color="#f3f4f6",   # heller Text
-            size=12
-        ),
-        bgcolor="#111827",       # dunkler Hintergrund für die Legende
+        font=dict(color="#f3f4f6", size=12),
+        bgcolor="#111827",
         bordercolor="#1f2937",
         borderwidth=1,
-        orientation="v",        # optional: horizontal
-        yanchor="bottom",
-        y=1.02,
-        xanchor="right",
-        x=1
+        orientation="v",
+        xanchor="left",
+        x=1.02,        # rechts vom Plot
+        yanchor="top",
+        y=1,
+        traceorder="normal"
     )
 )
 
