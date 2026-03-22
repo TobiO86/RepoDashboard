@@ -133,26 +133,38 @@ def scan_market(limit=100):
     results = []
 
     chunks = np.array_split(symbols, 3)
+    data_all = {}
 
-    data_list = []
     for chunk in chunks:
-        d = yf.download(
-            tickers=list(chunk),
-            period="2d",
-            interval="5m",
-            group_by="ticker",
-            threads=False,
-            progress=False
-        )
-        data_list.append(d)
-
-    data = pd.concat(data_list, axis=1)
-    for s in symbols:
+        chunk = list(chunk)
+        if not chunk:
+            continue
         try:
-            if s not in data:
+            d = yf.download(
+                tickers=chunk,
+                period="2d",
+                interval="5m",
+                group_by="ticker",
+                threads=False,
+                progress=False
+            )
+            if isinstance(d.columns, pd.MultiIndex):
+                for ticker in chunk:
+                    if ticker in d:
+                        data_all[ticker] = d[ticker].dropna()
+            else:
+                # Single ticker fallback
+                data_all[chunk[0]] = d.dropna()
+        except Exception as e:
+            print(f"Error downloading chunk {chunk}: {e}")
+            
+        for s in symbols:
+            df = data_all.get(s)
+            if df is None or len(df) < 50:
                 continue
+            # … restlicher Scanner …
 
-            df = data[s].dropna()
+            df = data_all[s].dropna()
             if len(df) < 50:
                 continue
 
