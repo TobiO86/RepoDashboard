@@ -480,11 +480,11 @@ df["BB_MID"].fillna(method="ffill", inplace=True)
 bb_period = 20
 bb_std = 2
 
-df["BB_MID"] = df["Close"].rolling(bb_period).mean()
-df["BB_STD"] = df["Close"].rolling(bb_period).std()
-
-df["BB_UPPER"] = df["BB_MID"] + bb_std * df["BB_STD"]
-df["BB_LOWER"] = df["BB_MID"] - bb_std * df["BB_STD"]
+if "BB_UPPER" not in df.columns:
+    df["BB_MID"] = df["Close"].rolling(20).mean()
+    df["BB_STD"] = df["Close"].rolling(20).std()
+    df["BB_UPPER"] = df["BB_MID"] + 2*df["BB_STD"]
+    df["BB_LOWER"] = df["BB_MID"] - 2*df["BB_STD"]
 
 # Bollinger Squeeze
 df["BB_WIDTH"] = df["BB_UPPER"] - df["BB_LOWER"]
