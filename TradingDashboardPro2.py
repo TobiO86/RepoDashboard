@@ -464,14 +464,7 @@ vwap_dev = (typical_price - df["VWAP"]).rolling(20).std()
 df["VWAP_upper2"] = df["VWAP"] + 2*vwap_dev
 df["VWAP_lower2"] = df["VWAP"] - 2*vwap_dev
 
-# Optional: NaN vermeiden bei VWAP und BB
-df["VWAP"].fillna(method="ffill", inplace=True)
-df["VWAP_upper2"].fillna(method="ffill", inplace=True)
-df["VWAP_lower2"].fillna(method="ffill", inplace=True)
 
-df["BB_UPPER"].fillna(method="ffill", inplace=True)
-df["BB_LOWER"].fillna(method="ffill", inplace=True)
-df["BB_MID"].fillna(method="ffill", inplace=True)
 
 # -----------------------
 # BOLLINGER BANDS
@@ -485,6 +478,15 @@ if "BB_UPPER" not in df.columns:
     df["BB_STD"] = df["Close"].rolling(20).std()
     df["BB_UPPER"] = df["BB_MID"] + 2*df["BB_STD"]
     df["BB_LOWER"] = df["BB_MID"] - 2*df["BB_STD"]
+    
+    # Optional: NaN vermeiden bei VWAP und BB
+df["VWAP"].fillna(method="ffill", inplace=True)
+df["VWAP_upper2"].fillna(method="ffill", inplace=True)
+df["VWAP_lower2"].fillna(method="ffill", inplace=True)
+
+df["BB_UPPER"].fillna(method="ffill", inplace=True)
+df["BB_LOWER"].fillna(method="ffill", inplace=True)
+df["BB_MID"].fillna(method="ffill", inplace=True)
 
 # Bollinger Squeeze
 df["BB_WIDTH"] = df["BB_UPPER"] - df["BB_LOWER"]
