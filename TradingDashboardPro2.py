@@ -788,15 +788,14 @@ if show_score:
     titles.append("Score")
 
 # 👉 WICHTIG: größere Hauptchart-Gewichtung
-row_heights = [0.5]
-if rows > 1:
-    small_height = 0.5 / (rows - 1)
-    row_heights += [small_height] * (rows - 1)
-
-remaining = rows - 1
-if remaining > 0:
-    small_height = 0.5 / remaining
-    row_heights += [small_height] * remaining
+# Hauptchart = 0.5, Rest gleichmäßig
+if rows == 1:
+    row_heights = [1.0]
+else:
+    main_height = 0.5
+    remaining_height = 1 - main_height
+    small_height = remaining_height / (rows - 1)
+    row_heights = [main_height] + [small_height] * (rows - 1)
 
 fig = make_subplots(
     rows=rows,
