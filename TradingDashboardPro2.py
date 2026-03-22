@@ -1204,6 +1204,16 @@ input, textarea, div[data-baseweb="select"] {
     background-color: transparent !important;
 }
 
+/* Selectbox in Sidebar */
+section[data-testid="stSidebar"] div[data-baseweb="select"] > div {
+    background-color: #1f2937 !important;  /* dunkler Hintergrund */
+    color: #f3f4f6 !important;             /* heller Text */
+}
+
+section[data-testid="stSidebar"] div[data-baseweb="select"] span {
+    color: #f3f4f6 !important;             /* ausgewählter Text */
+}
+
 </style>
 """, unsafe_allow_html=True)
 
