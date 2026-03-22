@@ -1139,7 +1139,7 @@ fig.update_layout(
         bgcolor="#111827",       # dunkler Hintergrund für die Legende
         bordercolor="#1f2937",
         borderwidth=1,
-        orientation="h",        # optional: horizontal
+        orientation="v",        # optional: horizontal
         yanchor="bottom",
         y=1.02,
         xanchor="right",
