@@ -135,6 +135,7 @@ def scan_market(limit=100):
     chunks = np.array_split(symbols, 3)
     data_all = {}
 
+    # --- Download ---
     for chunk in chunks:
         chunk = list(chunk)
         if not chunk:
@@ -150,27 +151,25 @@ def scan_market(limit=100):
             )
             if isinstance(d.columns, pd.MultiIndex):
                 for ticker in chunk:
-                    if ticker in d:
-                        data_all[ticker] = d[ticker].dropna()
+                    df = d.get(ticker)
+                    if df is not None and not df.empty:
+                        data_all[ticker] = df.dropna()
             else:
-                # Single ticker fallback
-                data_all[chunk[0]] = d.dropna()
+                df = d
+                if not df.empty:
+                    data_all[chunk[0]] = df.dropna()
         except Exception as e:
-            print(f"Error downloading chunk {chunk}: {e}")
-            
-        for s in symbols:
-            df = data_all.get(s)
-            if df is None or len(df) < 50:
-                continue
-            # … restlicher Scanner …
+            print(f"Download error for chunk {chunk}: {e}")
+            continue
 
-            df = data_all[s].dropna()
-            if len(df) < 50:
-                continue
+    # --- Scan ---
+    for s in symbols:
+        df = data_all.get(s)
+        if df is None or len(df) < 50:
+            continue
 
-            # -----------------------
+        try:
             # LIGHT INDICATORS
-            # -----------------------
             df["VWAP"] = (df["Close"] * df["Volume"]).cumsum() / df["Volume"].cumsum()
             df["Volume_MA"] = df["Volume"].rolling(20).mean()
 
@@ -179,131 +178,78 @@ def scan_market(limit=100):
 
             price = df["Close"].iloc[-1]
             vwap = df["VWAP"].iloc[-1]
-           
+
             delta = df["Close"].diff()
             gain = delta.clip(lower=0)
             loss = -delta.clip(upper=0)
-
             avg_gain = gain.ewm(alpha=1/14).mean()
             avg_loss = loss.ewm(alpha=1/14).mean()
-
             rs = avg_gain / avg_loss.replace(0, 1e-10)
             rsi = 100 - (100 / (1 + rs))
             rsi = rsi.iloc[-1]
 
             volume = df["Volume"].iloc[-1]
             volume_ma = df["Volume_MA"].iloc[-1]
-
             vol_spike = volume > 1.5 * volume_ma
 
-            # -----------------------
-            # LIQUIDITY (simplified sweep)
-            # -----------------------
+            # LIQUIDITY
             high_max = df["High"].rolling(20).max()
             low_min = df["Low"].rolling(20).min()
-
             sweep_high = df["High"].iloc[-2] > high_max.iloc[-3]
             sweep_low = df["Low"].iloc[-2] < low_min.iloc[-3]
 
-            # -----------------------
-            # TREND (HTF approximation)
-            # -----------------------
+            # TREND
             trend_bull = ema20.iloc[-1] > ema50.iloc[-1]
             trend_bear = ema20.iloc[-1] < ema50.iloc[-1]
 
-            # -----------------------
-            # SIGNAL APPROX (dein System!)
-            # -----------------------
-            long_score = 0
-            short_score = 0
-
-            # LONG
-            if sweep_low: long_score += 1
-            if price > vwap: long_score += 1
-            if vol_spike: long_score += 1
-            if trend_bull: long_score += 1
-            if rsi > 60: long_score += 1
-            # Momentum Confirmation
-            momentum = df["Close"].iloc[-1] > df["Close"].iloc[-3]
-
-            if momentum:
-                long_score += 1
-
-            # Liquidity reclaim boost
-            if sweep_low and price > vwap:
-                long_score += 2
-
-            # SHORT
-            if sweep_high: short_score += 1
-            if price < vwap: short_score += 1
-            if vol_spike: short_score += 1
-            if trend_bear: short_score += 1
-            if rsi < 40: short_score += 1
-
-            # Liquidity rejection boost
-            if sweep_high and price < vwap:
-                short_score += 2
-
+            # SIGNAL
+            long_score = sum([
+                sweep_low, price > vwap, vol_spike, trend_bull, rsi > 60,
+                df["Close"].iloc[-1] > df["Close"].iloc[-3],
+                sweep_low and price > vwap  # boost
+            ])
+            short_score = sum([
+                sweep_high, price < vwap, vol_spike, trend_bear, rsi < 40,
+                sweep_high and price < vwap  # boost
+            ])
             score_delta = long_score - short_score
 
-            # -----------------------
-            # FILTER (wie dein Chart)
-            # -----------------------
             setup = None
             final_score = 0
 
             if long_score >= 5 and score_delta > 1:
-                setup = "STRONG LONG"
-                final_score = long_score
-                
+                setup, final_score = "STRONG LONG", long_score
             elif short_score >= 5 and score_delta < -1:
-                setup = "STRONG SHORT"
-                final_score = short_score                
-                
+                setup, final_score = "STRONG SHORT", short_score
             elif long_score >= 4 and score_delta > 1:
-                setup = "LONG"
-                final_score = long_score
-
+                setup, final_score = "LONG", long_score
             elif short_score >= 4 and score_delta < -1:
-                setup = "SHORT"
-                final_score = short_score
-
-            # Early signal (wichtig!)
+                setup, final_score = "SHORT", short_score
             elif long_score >= 3 and score_delta > 0:
-                setup = "EARLY LONG (Unsicher)"
-                final_score = long_score
-
+                setup, final_score = "EARLY LONG (Unsicher)", long_score
             elif short_score >= 3 and score_delta < 0:
-                setup = "EARLY SHORT (Unsicher)"
-                final_score = short_score
+                setup, final_score = "EARLY SHORT (Unsicher)", short_score
 
-            if setup is None:
-                continue
-
-            results.append({
-                "symbol": s,
-                "price": round(price, 2),
-                "score": final_score,
-                "delta": score_delta,
-                "setup": setup,
-                "volume": int(volume)
-            })
+            if setup:
+                results.append({
+                    "symbol": s,
+                    "price": round(price, 2),
+                    "score": final_score,
+                    "delta": score_delta,
+                    "setup": setup,
+                    "volume": int(volume)
+                })
 
         except Exception as e:
             print(f"Scanner error {s}: {e}")
             continue
 
     df_res = pd.DataFrame(results)
-
     if df_res.empty:
         return [], []
 
     df_res = df_res.sort_values("score", ascending=False)
-
-    return (
-        df_res.head(10).to_dict("records"),
-        df_res.tail(10).to_dict("records")
-    )
+    return df_res.head(10).to_dict("records"), df_res.tail(10).to_dict("records")
 
 
 # -----------------------
