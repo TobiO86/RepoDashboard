@@ -1129,22 +1129,22 @@ fig.update_layout(
     height=height,
     hovermode="x unified",
     xaxis_rangeslider_visible=False,
-    uirevision="constant"
+    uirevision="constant",
     
     legend=dict(
-    font=dict(
-        color="#f3f4f6",   # heller Text
-        size=12
-    ),
-    bgcolor="#111827",       # dunkler Hintergrund für die Legende
-    bordercolor="#1f2937",
-    borderwidth=1,
-    orientation="h",        # optional: horizontal
-    yanchor="bottom",
-    y=1.02,
-    xanchor="right",
-    x=1
-)
+        font=dict(
+            color="#f3f4f6",   # heller Text
+            size=12
+        ),
+        bgcolor="#111827",       # dunkler Hintergrund für die Legende
+        bordercolor="#1f2937",
+        borderwidth=1,
+        orientation="h",        # optional: horizontal
+        yanchor="bottom",
+        y=1.02,
+        xanchor="right",
+        x=1
+    )
 )
 
 # 🔥 WICHTIG: ALLE SUBPLOTS überschreiben
