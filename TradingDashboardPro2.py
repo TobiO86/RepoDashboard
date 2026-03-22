@@ -5,7 +5,32 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import numpy as np
 import requests
+import pytz
+from datetime import datetime, time
 
+def get_market_session():
+    et = pytz.timezone("US/Eastern")
+    now = datetime.now(et)
+
+    weekday = now.weekday()
+    current_time = now.time()
+
+    if weekday >= 5:
+        return "WEEKEND"
+
+    if time(4, 0) <= current_time < time(9, 30):
+        return "PREMARKET"
+
+    elif time(9, 30) <= current_time < time(16, 0):
+        return "RTH"  # Regular Trading Hours
+
+    elif time(16, 0) <= current_time < time(20, 0):
+        return "AFTERHOURS"
+
+    else:
+        return "CLOSED"
+
+ 
 st.set_page_config(layout="wide")  # 👈 ganz oben!
 
 if "symbol" not in st.session_state:
@@ -23,7 +48,7 @@ def get_sp500_symbols():
         # MEGA CAPS (Stabilität)
         # -----------------------
         "AAPL","MSFT","NVDA","AMZN","META","GOOGL","TSLA",
-        "AVGO","TSM","AMD","NFLX","INTC","ADBE","CRM",
+        "AVGO","TSM","AMD","NFLX","INTC","ADBE","CRM","LITE",
 
         # -----------------------
         # HIGH BETA / TRADER STOCKS
@@ -44,7 +69,7 @@ def get_sp500_symbols():
         # -----------------------
         # ENERGY (VOLATIL)
         # -----------------------
-        "XOM","CVX","OXY","SLB","HAL",
+        "XOM","CVX","OXY","SLB","HAL","ENR.DE",
 
         # -----------------------
         # HEALTHCARE (MOVES OFTEN NEWS DRIVEN)
@@ -60,7 +85,14 @@ def get_sp500_symbols():
         # ETFS (SEHR WICHTIG!)
         # -----------------------
         "SPY","QQQ","IWM","DIA","XLF","XLK","XLE",
-
+        
+        # -----------------------
+        # FUTURES (24/5)
+        # -----------------------
+        "ES=F",   # S&P 500 Futures
+        "NQ=F",   # Nasdaq Futures
+        "YM=F",   # Dow Futures
+        "RTY=F",  # Russell
         # -----------------------
         # INDIZES
         # -----------------------
@@ -74,24 +106,47 @@ def get_sp500_symbols():
         # -----------------------
         # CRYPTO
         # -----------------------
-        "BTC-USD","ETH-USD","SOL-USD"
+        "BTC-USD","ETH-USD","SOL-USD","XRP_USD","ADA_USD"
+
     ]
 
+def filter_symbols_by_session(symbols):
+    session = get_market_session()
 
+    if session == "RTH":
+        symbols = symbols[:100]   # volle Power nur im Markt
+    else:
+        symbols = symbols[:30]    # off-hours = weniger nötig
+
+    if session == "WEEKEND":
+        return [s for s in symbols if "=F" in s or "USD" in s]
+
+    elif session in ["PREMARKET", "AFTERHOURS"]:
+        # optional: weniger Noise
+        return symbols  # oder nur High Beta / Futures
+
+    return symbols
+    
 @st.cache_data(ttl=60)
 def scan_market(limit=100):
-    symbols = get_sp500_symbols()[:limit]
+    symbols = filter_symbols_by_session(get_sp500_symbols())[:limit]
     results = []
 
-    data = yf.download(
-        tickers=symbols,
-        period="2d",
-        interval="5m",
-        group_by="ticker",
-        threads=True,
-        progress=False
-    )
+    chunks = np.array_split(symbols, 3)
 
+    data_list = []
+    for chunk in chunks:
+        d = yf.download(
+            tickers=list(chunk),
+            period="2d",
+            interval="5m",
+            group_by="ticker",
+            threads=False,
+            progress=False
+        )
+        data_list.append(d)
+
+    data = pd.concat(data_list, axis=1)
     for s in symbols:
         try:
             if s not in data:
@@ -112,7 +167,17 @@ def scan_market(limit=100):
 
             price = df["Close"].iloc[-1]
             vwap = df["VWAP"].iloc[-1]
-            rsi = df["Close"].pct_change(14).iloc[-1] * 100
+           
+            delta = df["Close"].diff()
+            gain = delta.clip(lower=0)
+            loss = -delta.clip(upper=0)
+
+            avg_gain = gain.ewm(alpha=1/14).mean()
+            avg_loss = loss.ewm(alpha=1/14).mean()
+
+            rs = avg_gain / avg_loss.replace(0, 1e-10)
+            rsi = 100 - (100 / (1 + rs))
+            rsi = rsi.iloc[-1]
 
             volume = df["Volume"].iloc[-1]
             volume_ma = df["Volume_MA"].iloc[-1]
@@ -145,7 +210,12 @@ def scan_market(limit=100):
             if price > vwap: long_score += 1
             if vol_spike: long_score += 1
             if trend_bull: long_score += 1
-            if rsi > 0: long_score += 1
+            if rsi > 60: long_score += 1
+            # Momentum Confirmation
+            momentum = df["Close"].iloc[-1] > df["Close"].iloc[-3]
+
+            if momentum:
+                long_score += 1
 
             # Liquidity reclaim boost
             if sweep_low and price > vwap:
@@ -156,7 +226,7 @@ def scan_market(limit=100):
             if price < vwap: short_score += 1
             if vol_spike: short_score += 1
             if trend_bear: short_score += 1
-            if rsi < 0: short_score += 1
+            if rsi < 40: short_score += 1
 
             # Liquidity rejection boost
             if sweep_high and price < vwap:
@@ -170,7 +240,15 @@ def scan_market(limit=100):
             setup = None
             final_score = 0
 
-            if long_score >= 4 and score_delta > 1:
+            if long_score >= 5 and score_delta > 1:
+                setup = "STRONG LONG"
+                final_score = long_score
+                
+            elif short_score >= 5 and score_delta < -1:
+                setup = "STRONG SHORT"
+                final_score = short_score                
+                
+            elif long_score >= 4 and score_delta > 1:
                 setup = "LONG"
                 final_score = long_score
 
@@ -180,11 +258,11 @@ def scan_market(limit=100):
 
             # Early signal (wichtig!)
             elif long_score >= 3 and score_delta > 0:
-                setup = "EARLY LONG"
+                setup = "EARLY LONG (Unsicher)"
                 final_score = long_score
 
             elif short_score >= 3 and score_delta < 0:
-                setup = "EARLY SHORT"
+                setup = "EARLY SHORT (Unsicher)"
                 final_score = short_score
 
             if setup is None:
@@ -199,7 +277,8 @@ def scan_market(limit=100):
                 "volume": int(volume)
             })
 
-        except:
+        except Exception as e:
+            print(f"Scanner error {s}: {e}")
             continue
 
     df_res = pd.DataFrame(results)
@@ -246,10 +325,20 @@ with st.sidebar.expander("🔥 Scanner PRO MAX", expanded=False):
         key="scanner_limit"
     )
 
-    gainers, losers = scan_market(limit)
+live_mode = st.sidebar.checkbox("⚡ Live Mode (RTH only)", True)
 
-    render_list("Top Momentum ↑", gainers)
-    render_list("Top Breakdown ↓", losers)
+session = get_market_session()
+
+if live_mode:
+    if session == "WEEKEND":
+        st.caption("Weekend Mode: nur Crypto + Futures")
+    elif session != "RTH":
+        st.caption(f"Off-hours: {session}")
+
+gainers, losers = scan_market(limit)
+
+render_list("Top Momentum ↑", gainers)
+render_list("Top Breakdown ↓", losers)
 
 # -----------------------
 # SIDEBAR
@@ -304,6 +393,7 @@ show_volume = st.sidebar.checkbox("Volume", True)
 show_rsi = st.sidebar.checkbox("RSI", True)
 show_macd = st.sidebar.checkbox("MACD", True)
 
+
 # -----------------------
 # DATA
 # -----------------------
@@ -345,12 +435,20 @@ df = df.tail(300)
 # -----------------------
 
 @st.cache_data(ttl=30)
-def load_mtf(symbol):
-    df_5m = yf.download(symbol, period="2d", interval="5m", progress=False)
-    df_15m = yf.download(symbol, period="5d", interval="15m", progress=False)
-    return df_5m.dropna(), df_15m.dropna()
+def load_mtf(df_base):
+    df_5m = df_base.copy()
 
-df_5m, df_15m = load_mtf(symbol)
+    df_15m = df_5m.resample("15min").agg({
+        "Open": "first",
+        "High": "max",
+        "Low": "min",
+        "Close": "last",
+        "Volume": "sum"
+    }).dropna()
+
+    return df_5m, df_15m
+
+df_5m, df_15m = load_mtf(df)
 
 def mtf_bias(df):
     close = df["Close"]
@@ -362,7 +460,10 @@ def mtf_bias(df):
     ema20 = close.ewm(span=20).mean()
     ema50 = close.ewm(span=50).mean()
 
-    return "bull" if float(ema20.iloc[-1]) > float(ema50.iloc[-1]) else "bear"
+    if len(ema50.dropna()) == 0:
+        return "neutral"
+
+    return "bull" if ema20.iloc[-1] > ema50.iloc[-1] else "bear"
 
 
 bias_5m = mtf_bias(df_5m)
@@ -392,13 +493,27 @@ df["MACD"] = ema12 - ema26
 df["MACD_signal"] = df["MACD"].ewm(span=9).mean()
 df["MACD_hist"] = df["MACD"] - df["MACD_signal"]
 
-df["VWAP"] = (df["Close"] * df["Volume"]).cumsum() / df["Volume"].cumsum()
+df["date"] = df.index.date
+
+df["VWAP"] = (
+    (df["Close"] * df["Volume"]).groupby(df["date"]).cumsum() /
+    df["Volume"].groupby(df["date"]).cumsum()
+)
 
 typical_price = (df["High"] + df["Low"] + df["Close"]) / 3
 vwap_dev = (typical_price - df["VWAP"]).rolling(20).std()
 
 df["VWAP_upper2"] = df["VWAP"] + 2*vwap_dev
 df["VWAP_lower2"] = df["VWAP"] - 2*vwap_dev
+
+# Optional: NaN vermeiden bei VWAP und BB
+df["VWAP"].fillna(method="ffill", inplace=True)
+df["VWAP_upper2"].fillna(method="ffill", inplace=True)
+df["VWAP_lower2"].fillna(method="ffill", inplace=True)
+
+df["BB_UPPER"].fillna(method="ffill", inplace=True)
+df["BB_LOWER"].fillna(method="ffill", inplace=True)
+df["BB_MID"].fillna(method="ffill", inplace=True)
 
 # -----------------------
 # BOLLINGER BANDS
@@ -487,7 +602,8 @@ for i in range(start, len(df)):
     if curr["delta"] > -vol_avg.iloc[i]: score_long += 1
     if df["SellNewsLong"].iloc[i]:
         score_long += 2
-        
+    if curr["delta"] > vol_avg.iloc[i] * 0.3:
+        score_long += 1    
     # LONG nur wenn echter Reclaim
     if prev["sweep_low"] and curr["Close"] > prev["Low"]:
         score_long += 1
@@ -630,6 +746,10 @@ col1.metric(
 col2.metric("VWAP", f"{vwap_last:.2f}")
 col3.metric("RSI", f"{rsi_last:.2f}")
 
+
+session = get_market_session()
+st.caption(f"Session: {session}")
+
 # -----------------------
 # SUPPORT / RESISTANCE
 # -----------------------
@@ -661,6 +781,9 @@ df = df.fillna(method="bfill").fillna(method="ffill")
 if len(df) < 50:
     st.warning("Zu wenig Daten")
     st.stop()
+
+last_time = df.index[-1]
+st.caption(f"Last update: {last_time}")
 
 supports,resistances = detect_levels(df)
 if len(supports) == 0:
@@ -706,6 +829,9 @@ if show_score:
 
 # 👉 WICHTIG: größere Hauptchart-Gewichtung
 row_heights = [0.5]
+if rows > 1:
+    small_height = 0.5 / (rows - 1)
+    row_heights += [small_height] * (rows - 1)
 
 remaining = rows - 1
 if remaining > 0:
