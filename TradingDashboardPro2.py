@@ -7,6 +7,11 @@ import numpy as np
 import requests
 import pytz
 from datetime import datetime, time
+from streamlit_autorefresh import st_autorefresh
+
+# -----------------------
+# AUTO REFRESH (NUR TOP DATEN)
+# -----------------------
 
 def get_market_session():
     et = pytz.timezone("US/Eastern")
@@ -127,7 +132,7 @@ def filter_symbols_by_session(symbols):
 
     return symbols
     
-@st.cache_data(ttl=60)
+@st.cache_data(ttl=180)
 def scan_market(limit=100):
     symbols = filter_symbols_by_session(get_sp500_symbols())[:limit]
     results = []
@@ -355,8 +360,12 @@ show_macd = st.sidebar.checkbox("MACD", True)
 # -----------------------
 # DATA
 # -----------------------
-
 @st.cache_data(ttl=5)
+def load_fast_price(symbol):
+    df = yf.download(symbol, period="1d", interval="1m", progress=False)
+    return df.dropna()
+
+@st.cache_data(ttl=120)
 def load_data(symbol, period, interval, _version=2):
     df = yf.download(symbol, period=period, interval=interval, progress=False)
     if isinstance(df.columns, pd.MultiIndex):
@@ -656,14 +665,27 @@ for i in range(1, len(df)):
 # PRICE METRICS
 # -----------------------
 
-current = df["Close"].iloc[-1]
-prev = df["Close"].iloc[-2]
+
+
+df_fast = load_fast_price(symbol)
+
+current = df_fast["Close"].iloc[-1]
+prev = df_fast["Close"].iloc[-2]
 
 change = current - prev
 change_percent = (change / prev) * 100
 
-vwap_last = df["VWAP"].iloc[-1]
+vwap_last = (df_fast["Close"] * df_fast["Volume"]).cumsum() / df_fast["Volume"].cumsum()
+vwap_last = vwap_last.iloc[-1]
+
 rsi_last = df["RSI"].iloc[-1]
+
+# -----------------------
+# AUTO REFRESH (NUR METRICS)
+# -----------------------
+
+if get_market_session() == "RTH":
+    st_autorefresh(interval=5000, key="price_refresh")
 
 col1, col2, col3 = st.columns(3)
 
