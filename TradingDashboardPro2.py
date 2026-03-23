@@ -8,7 +8,7 @@ import requests
 import pytz
 from datetime import datetime, time
 from streamlit_autorefresh import st_autorefresh
-
+import pytz
 # -----------------------
 # AUTO REFRESH (NUR TOP DATEN)
 # -----------------------
@@ -379,14 +379,35 @@ def load_fast_price(symbol):
 
     return df
 
-@st.cache_data(ttl=120)
-def load_data(symbol, period, interval, _version=2):
-    df = yf.download(symbol, period=period, interval=interval, progress=False)
+@st.cache_data(ttl=60)
+def load_data_with_premarket(symbol, period, interval):
+    # prepost=True liefert auch Pre- und After-Hours
+    df = yf.download(
+        symbol, 
+        period=period, 
+        interval=interval, 
+        progress=False, 
+        prepost=True
+    )
     if isinstance(df.columns, pd.MultiIndex):
         df.columns = df.columns.get_level_values(0)
     return df.dropna()
 
+et = pytz.timezone("US/Eastern")
 
+def mark_premarket(df):
+    df['Session'] = 'RTH'
+    for idx in df.index:
+        local_time = idx.tz_convert(et).time()
+        if time(4,0) <= local_time < time(9,30):
+            df.at[idx, 'Session'] = 'PREMARKET'
+        elif time(16,0) <= local_time < time(20,0):
+            df.at[idx, 'Session'] = 'AFTERHOURS'
+        else:
+            df.at[idx, 'Session'] = 'RTH'
+    return df
+
+df = mark_premarket(df)
 
 def normalize_df(df):
     # MultiIndex komplett entfernen
@@ -401,7 +422,9 @@ def normalize_df(df):
 
     return df
 
-df = load_data(symbol, period, interval)
+df = load_data_with_premarket(symbol, period, interval)
+df = normalize_df(df)
+df = df.loc[:, ~df.columns.duplicated()]
 
 df = normalize_df(df)
 df = df.loc[:, ~df.columns.duplicated()]
@@ -934,7 +957,21 @@ if show_score:
 # -----------------------
 # PRICE
 # -----------------------
-
+# Premarket-Candles (optional dünner / transparenter)
+pre_df = df[df["Session"]=="PREMARKET"]
+if not pre_df.empty:
+    fig.add_trace(go.Candlestick(
+        x=pre_df.index,
+        open=pre_df["Open"],
+        high=pre_df["High"],
+        low=pre_df["Low"],
+        close=pre_df["Close"],
+        name="Premarket",
+        increasing_line_color='lightblue',
+        decreasing_line_color='lightcoral',
+        opacity=0.4
+    ), row=price_row, col=1)
+    
 fig.add_trace(go.Candlestick(
     x=df.index,
     open=df["Open"],
