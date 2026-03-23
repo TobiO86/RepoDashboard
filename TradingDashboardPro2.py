@@ -948,6 +948,11 @@ else:
     small_height = remaining_height / (rows - 1)
     row_heights = [main_height] + [small_height] * (rows - 1)
 
+
+rows = 5  # z.B. Price, Volume, Score, Indikator, Timeline
+row_heights = [0.5, 0.15, 0.15, 0.1, 0.1]  # Summe = 1
+titles = ["Price", "Volume", "Score", "Indicator", "Timeline"]
+
 fig = make_subplots(
     rows=rows,
     cols=1,
@@ -956,6 +961,9 @@ fig = make_subplots(
     row_heights=row_heights,
     subplot_titles=titles
 )
+
+timeline_row = rows  # = 5, letzte Row
+timeline_row = rows  # = 5, letzte Row
 
 current_row = 1
 price_row = current_row
