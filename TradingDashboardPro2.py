@@ -175,7 +175,12 @@ def scan_market(limit=100):
 
         try:
             # LIGHT INDICATORS
-            df["VWAP"] = (df["Close"] * df["Volume"]).cumsum() / df["Volume"].cumsum()
+            df["date"] = df.index.date
+
+            df["VWAP"] = (
+                (df["Close"] * df["Volume"]).groupby(df["date"]).cumsum() /
+                df["Volume"].groupby(df["date"]).cumsum()
+            )
             df["Volume_MA"] = df["Volume"].rolling(20).mean()
 
             ema20 = df["Close"].ewm(span=20).mean()
@@ -363,7 +368,16 @@ show_macd = st.sidebar.checkbox("MACD", True)
 @st.cache_data(ttl=5)
 def load_fast_price(symbol):
     df = yf.download(symbol, period="1d", interval="1m", progress=False)
-    return df.dropna()
+
+    if df.empty or "Close" not in df:
+        return pd.DataFrame()
+
+    df = df.dropna()
+
+    if isinstance(df.columns, pd.MultiIndex):
+        df.columns = df.columns.get_level_values(0)
+
+    return df
 
 @st.cache_data(ttl=120)
 def load_data(symbol, period, interval, _version=2):
@@ -462,10 +476,12 @@ df["MACD_hist"] = df["MACD"] - df["MACD_signal"]
 
 df["date"] = df.index.date
 
-df["VWAP"] = (
-    (df["Close"] * df["Volume"]).groupby(df["date"]).cumsum() /
-    df["Volume"].groupby(df["date"]).cumsum()
-)
+def compute_vwap(df):
+    tp = (df["High"] + df["Low"] + df["Close"]) / 3
+    vwap = (tp * df["Volume"]).cumsum() / df["Volume"].cumsum()
+    return vwap
+
+df["VWAP"] = compute_vwap(df)
 
 typical_price = (df["High"] + df["Low"] + df["Close"]) / 3
 vwap_dev = (typical_price - df["VWAP"]).rolling(20).std()
@@ -563,46 +579,93 @@ for i in range(start, len(df)):
     curr = df.iloc[i]
 
     score_long = 0
-    if prev["sweep_low"]: score_long += 1
-    if curr["Close"] > curr["VWAP"]: score_long += 1
-    if curr["vol_spike"]: score_long += 1
-    if bias_5m == "bull": score_long += 1
-    if bias_15m == "bull": score_long += 1
-    if curr["delta"] > -vol_avg.iloc[i]: score_long += 1
-    if df["SellNewsLong"].iloc[i]:
-        score_long += 2
-    if curr["delta"] > vol_avg.iloc[i] * 0.3:
-        score_long += 1    
-    # LONG nur wenn echter Reclaim
-    if prev["sweep_low"] and curr["Close"] > prev["Low"]:
-        score_long += 1
 
-    # 🔥 Liquidity Boost
+    weights = {
+        "sweep": 2,
+        "vwap": 2,
+        "volume": 1.5,
+        "trend": 2,
+        "delta": 1,
+        "confirmation": 2,
+        "mtf": 1.5,
+        "sellnews": 2
+    }
+
+    # Core Faktoren
+    if prev["sweep_low"]:
+        score_long += weights["sweep"]
+
+    if curr["Close"] > curr["VWAP"]:
+        score_long += weights["vwap"]
+
+    if curr["vol_spike"]:
+        score_long += weights["volume"]
+
+    # Trend (MTF)
+    if bias_5m == "bull":
+        score_long += weights["trend"]
+
+    if bias_15m == "bull":
+        score_long += weights["mtf"]
+
+    # Delta
+    if curr["delta"] > 0:
+        score_long += weights["delta"]
+
+    # Confirmation (Boost)
     if prev["sweep_low"] and curr["Close"] > curr["VWAP"]:
-        score_long += 2
+        score_long += weights["confirmation"]
 
-    df.at[df.index[i], "LongScore"] = score_long
+    # Sell the news Reversal
+    if df["SellNewsLong"].iloc[i]:
+        score_long += weights["sellnews"]
+
+        df.at[df.index[i], "LongScore"] = score_long
 
     score_short = 0
-    if prev["sweep_high"]: score_short += 1
-    if curr["Close"] < curr["VWAP"]: score_short += 1
-    if curr["vol_spike"]: score_short += 1
-    if bias_5m == "bear": score_short += 1
-    if bias_15m == "bear": score_short += 1
-    if curr["delta"] < vol_avg.iloc[i]: score_short += 1
-    if df["SellNewsShort"].iloc[i]:
-        score_short += 2
 
+    weights = {
+        "sweep": 2,
+        "vwap": 2,
+        "volume": 1.5,
+        "trend": 2,
+        "delta": 1,
+        "confirmation": 2,
+        "mtf": 1.5,
+        "sellnews": 2
+    }
 
-    # SHORT nur wenn echter Rejection
-    if prev["sweep_high"] and curr["Close"] < prev["High"]:
-        score_short += 1
-        
-    # 🔥 Liquidity Boost
+    # Core Faktoren
+    if prev["sweep_high"]:
+        score_short += weights["sweep"]
+
+    if curr["Close"] < curr["VWAP"]:
+        score_short += weights["vwap"]
+
+    if curr["vol_spike"]:
+        score_short += weights["volume"]
+
+    # Trend (MTF)
+    if bias_5m == "bear":
+        score_short += weights["trend"]
+
+    if bias_15m == "bear":
+        score_short += weights["mtf"]
+
+    # Delta
+    if curr["delta"] < 0:
+        score_short += weights["delta"]
+
+    # Confirmation (Boost)
     if prev["sweep_high"] and curr["Close"] < curr["VWAP"]:
-        score_short += 2
+        score_short += weights["confirmation"]
 
-    df.at[df.index[i], "ShortScore"] = score_short  
+    # Sell the news Reversal
+    if df["SellNewsShort"].iloc[i]:
+        score_short += weights["sellnews"]
+
+    # Optional: runden
+    df.at[df.index[i], "ShortScore"] = round(score_short, 2)
 
 # -----------------------
 # HIGH PROBABILITY FILTER
@@ -665,15 +728,24 @@ for i in range(1, len(df)):
 # PRICE METRICS
 # -----------------------
 
-
-
 df_fast = load_fast_price(symbol)
+
+if df_fast.empty or len(df_fast) < 2:
+    st.warning("Keine Live-Daten verfügbar")
+    st.stop()
 
 current = df_fast["Close"].iloc[-1]
 prev = df_fast["Close"].iloc[-2]
 
-change = current - prev
-change_percent = (change / prev) * 100
+def safe_last(series, default=np.nan):
+    try:
+        val = series.iloc[-1]
+        if pd.isna(val):
+            return default
+        return float(val)
+    except:
+        return default
+
 
 vwap_last = (df_fast["Close"] * df_fast["Volume"]).cumsum() / df_fast["Volume"].cumsum()
 vwap_last = vwap_last.iloc[-1]
@@ -719,11 +791,18 @@ name = get_company_name(symbol)
 
 display_name = f"{name} ({symbol})" if name != symbol else symbol
 
-col1.metric(
-    display_name,
-    f"{current:.2f}",
-    f"{change:.2f} ({change_percent:.2f}%)"
-)
+if np.isnan(current) or np.isnan(prev):
+    st.warning("Keine Live-Daten verfügbar")
+else:
+    change = current - prev
+    change_percent = (change / prev) * 100
+
+    col1.metric(
+        display_name,
+        f"{current:.2f}",
+        f"{change:.2f} ({change_percent:.2f}%)"
+    )
+
 
 col2.metric("VWAP", f"{vwap_last:.2f}")
 col3.metric("RSI", f"{rsi_last:.2f}")
