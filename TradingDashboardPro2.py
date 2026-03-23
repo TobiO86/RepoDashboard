@@ -40,6 +40,7 @@ st.set_page_config(layout="wide")  # 👈 ganz oben!
 
 if "symbol" not in st.session_state:
     st.session_state.symbol = "BTC-USD"
+
     
 # -----------------------
 # MARKET SCANNER (PRO LEVEL)
@@ -327,40 +328,60 @@ if st.sidebar.button("🔄 Refresh Data"):
 # Nur updaten wenn User wirklich tippt
 if symbol_input != st.session_state.symbol:
     st.session_state.symbol = symbol_input
-
-period = st.sidebar.selectbox("Period", ["5d","1mo","3mo","6mo","1y"],key="period_select")
-interval = st.sidebar.selectbox("Timeframe", ["1m","5m","15m","1h","4h","1d"],key="interval_select")
     
 symbol = st.session_state.symbol   
 
-
 # -----------------------
-# AUTO PERIOD FIX (BEST PRACTICE)
+# AUTO PERIOD / INTERVAL FIX
 # -----------------------
-
-def auto_period(interval, period):
+def auto_period_interval(period, interval):
+    """
+    Stellt sicher, dass period und interval zusammenpassen.
+    Fügt period='1d' hinzu.
+    """
     valid_map = {
-        "1m": ["1d"],
-        "5m": ["5d"],
-        "15m": ["1mo"],
-        "1h": ["3mo"],
-        "4h": ["6mo"],
-        "1d": ["1y"]
+        "1m": ["1d", "5d"],
+        "5m": ["1d", "5d"],
+        "15m": ["5d", "1mo"],
+        "1h": ["1mo", "3mo"],
+        "4h": ["3mo", "6mo"],
+        "1d": ["1y", "max"]
     }
 
-    if interval in valid_map and period not in valid_map[interval]:
-        return valid_map[interval][0]  # fallback
+    # Falls period nicht kompatibel mit interval
+    if interval in valid_map:
+        if period not in valid_map[interval]:
+            # fallback = erstes gültiges period
+            period = valid_map[interval][0]
 
-    return period
+    # Optional: falls interval nicht passt zu period, anpassen
+    for key, periods in valid_map.items():
+        if period in periods:
+            if interval not in valid_map[key]:
+                interval = key  # erstes gültiges Intervall
+            break
 
-period = auto_period(interval, period)
-
-st.sidebar.caption(f"Aktive Kombi: {interval} / {period}")
+    return period, interval
 
 show_volume = st.sidebar.checkbox("Volume", True)
 show_rsi = st.sidebar.checkbox("RSI", True)
 show_macd = st.sidebar.checkbox("MACD", True)
 
+period = st.sidebar.selectbox(
+    "Period", 
+    ["1d", "5d", "1mo", "3mo", "6mo", "1y"],  # 1d hinzugefügt
+    key="period_select"
+)
+
+interval = st.sidebar.selectbox(
+    "Timeframe", 
+    ["1m","5m","15m","1h","4h","1d"],
+    key="interval_select"
+)
+
+# Nutzung:
+period, interval = auto_period_interval(period, interval)
+st.sidebar.caption(f"Aktive Kombi: {interval} / {period}")
 
 # -----------------------
 # DATA
@@ -915,6 +936,7 @@ if show_macd:
 if show_score:
     rows += 1
     titles.append("Score")
+    
 
 # 👉 WICHTIG: größere Hauptchart-Gewichtung
 # Hauptchart = 0.5, Rest gleichmäßig
@@ -959,6 +981,7 @@ if show_macd:
 if show_score:
     score_row = current_row
     current_row += 1
+
 # -----------------------
 # PRICE
 # -----------------------
@@ -993,6 +1016,34 @@ fig.add_trace(go.Scatter(x=df.index,y=df["VWAP"],name="VWAP"),row=price_row,col=
 fig.add_trace(go.Scatter(x=df.index,y=df["VWAP_upper2"],name="VWAP +2"),row=price_row,col=1)
 fig.add_trace(go.Scatter(x=df.index,y=df["VWAP_lower2"],name="VWAP -2"),row=price_row,col=1)
 
+timeline_row = current_row
+rows += 1
+titles.append("Timeline")
+row_heights.append(0.05)  # sehr kleine Höhe für Timeline
+
+session_colors = {
+    "PREMARKET": "lightblue",
+    "RTH": "white",
+    "AFTERHOURS": "lightcoral"
+}
+# Timeline über Candles setzen
+fig.add_trace(
+    go.Scatter(
+        x=df.index,
+        y=[0]*len(df),  # dummy y-Werte
+        mode='markers',
+        marker=dict(
+            color=[session_colors[s] for s in df['Session']],
+            size=6
+        ),
+        showlegend=False,
+        hoverinfo="x+text",
+        text=df['Session']
+    ),
+    row=timeline_row, col=1
+)
+
+fig.update_yaxes(visible=False, row=timeline_row, col=1)
 # -----------------------
 # SUPPORT / RESISTANCE LINES
 # -----------------------
