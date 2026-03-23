@@ -407,7 +407,7 @@ def mark_premarket(df):
             df.at[idx, 'Session'] = 'RTH'
     return df
 
-df = mark_premarket(df)
+
 
 def normalize_df(df):
     # MultiIndex komplett entfernen
@@ -426,8 +426,13 @@ df = load_data_with_premarket(symbol, period, interval)
 df = normalize_df(df)
 df = df.loc[:, ~df.columns.duplicated()]
 
-df = normalize_df(df)
-df = df.loc[:, ~df.columns.duplicated()]
+# 2️⃣ Leeren DataFrame abfangen
+if df.empty:
+    st.warning("Keine Daten verfügbar")
+    st.stop()
+
+# 3️⃣ Premarket markieren
+df = mark_premarket(df)
 
 if len(df) == 0:
     st.stop()
