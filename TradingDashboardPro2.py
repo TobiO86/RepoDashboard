@@ -952,7 +952,7 @@ else:
 rows = 5  # z.B. Price, Volume, Score, Indikator, Timeline
 row_heights = [0.5, 0.15, 0.15, 0.1, 0.1]  # Summe = 1
 titles = ["Price", "Volume", "Score", "Indicator", "Timeline"]
-
+timeline_row = rows  # = 5, letzte Row
 fig = make_subplots(
     rows=rows,
     cols=1,
@@ -961,9 +961,6 @@ fig = make_subplots(
     row_heights=row_heights,
     subplot_titles=titles
 )
-
-timeline_row = rows  # = 5, letzte Row
-timeline_row = rows  # = 5, letzte Row
 
 current_row = 1
 price_row = current_row
@@ -1023,11 +1020,6 @@ fig.add_trace(go.Scatter(x=df.index,y=df["VWAP"],name="VWAP"),row=price_row,col=
 
 fig.add_trace(go.Scatter(x=df.index,y=df["VWAP_upper2"],name="VWAP +2"),row=price_row,col=1)
 fig.add_trace(go.Scatter(x=df.index,y=df["VWAP_lower2"],name="VWAP -2"),row=price_row,col=1)
-
-timeline_row = current_row
-rows += 1
-titles.append("Timeline")
-row_heights.append(0.05)  # sehr kleine Höhe für Timeline
 
 session_colors = {
     "PREMARKET": "lightblue",
