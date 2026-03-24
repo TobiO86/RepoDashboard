@@ -407,7 +407,40 @@ def load_global_prices(symbol):
         "NVDA": "NVDA.DE",
         "AAPL": "AAPL.DE",
         "MSFT": "MSF.DE",
-        "AMZN": "AMZ.DE"
+        "AMZN": "AMZ.DE",
+        "META": "META.DE",
+        "GOOGL": "GOOGL.DE",
+        "AVGO": "AVGO.DE",
+        "TSM": "TSM.DE",
+        "AMD": "AMD.DE",
+        "NFLX": "NFLX.DE",
+        "INTC": "INTC.DE",
+        "ADBE": "ADBE.DE",
+        "CRM": "CRM.DE",
+        "LITE": "LITE.DE",
+        "COIN": "COIN.DE",
+        "PLTR": "PLTR.DE",
+        "RIVN": "RIVN.DE",
+        "SOFI": "SOFI.DE",
+        "SNAP": "SNAP.DE",
+        "ROKU": "ROKU.DE",
+        "UPST": "UPST.DE",
+        "AFRM": "AFRM.DE",
+        "DKNG": "DKNG.DE",
+        "SHOP": "SHOP.DE",
+        "SQ": "SQ.DE",
+        "PYPL":"PYPL.DE",
+
+        # -----------------------
+        # AI / MOMENTUM / HALBLEITER
+        # -----------------------
+        "SMCI": "SMCI.DE",
+        "ARM": "ARM.DE",
+        "MU":"MU.DE",
+        "ASML": "ASML.DE",
+        "LRCX": "LRCX.DE",
+        "KLAC": "KLAC.DE",
+        "MRVL": "MRVL.DE"
     }
 
     eu_symbol = eu_map.get(symbol)
