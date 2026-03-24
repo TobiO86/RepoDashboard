@@ -400,6 +400,41 @@ def load_fast_price(symbol):
 
     return df
 
+@st.cache_data(ttl=10)
+def load_global_prices(symbol):
+    eu_map = {
+        "TSLA": "TSLA.DE",
+        "NVDA": "NVDA.DE",
+        "AAPL": "AAPL.DE",
+        "MSFT": "MSF.DE",
+        "AMZN": "AMZ.DE"
+    }
+
+    asia_map = {
+        "TSLA": "TSLA34.SA",  # fallback (nicht perfekt)
+        "NVDA": "NVDA34.SA",
+        "AAPL": "AAPL34.SA"
+    }
+
+    eu_symbol = eu_map.get(symbol)
+    asia_symbol = asia_map.get(symbol)
+
+    def get_last_price(sym):
+        if not sym:
+            return np.nan
+        try:
+            df = yf.download(sym, period="1d", interval="5m", progress=False)
+            if df.empty:
+                return np.nan
+            return float(df["Close"].iloc[-1])
+        except:
+            return np.nan
+
+    eu_price = get_last_price(eu_symbol)
+    asia_price = get_last_price(asia_symbol)
+
+    return eu_price, asia_price, eu_symbol, asia_symbol
+
 @st.cache_data(ttl=60)
 def load_data_with_premarket(symbol, period, interval):
     # prepost=True liefert auch Pre- und After-Hours
@@ -848,6 +883,8 @@ if df_fast.empty or len(df_fast) < 2:
 current = df_fast["Close"].iloc[-1]
 prev = df_fast["Close"].iloc[-2]
 
+eu_price, asia_price, eu_symbol, asia_symbol = load_global_prices(symbol)
+
 def safe_last(series, default=np.nan):
     try:
         val = series.iloc[-1]
@@ -870,7 +907,7 @@ rsi_last = df["RSI"].iloc[-1]
 if get_market_session() == "RTH":
     st_autorefresh(interval=5000, key="price_refresh")
 
-col1, col2, col3 = st.columns(3)
+col1, col2, col3, col4, col5 = st.columns(5)
 
 @st.cache_data(ttl=86400)
 def get_company_name(symbol):
@@ -918,6 +955,23 @@ else:
 col2.metric("VWAP", f"{vwap_last:.2f}")
 col3.metric("RSI", f"{rsi_last:.2f}")
 
+# EU PRICE
+if not np.isnan(eu_price):
+    col4.metric(
+        f"{eu_symbol}",
+        f"{eu_price:.2f}"
+    )
+else:
+    col4.metric("EU", "-")
+
+# ASIA PRICE
+if not np.isnan(asia_price):
+    col5.metric(
+        f"{asia_symbol}",
+        f"{asia_price:.2f}"
+    )
+else:
+    col5.metric("ASIA", "-")
 
 session = get_market_session()
 st.caption(f"Session: {session}")
