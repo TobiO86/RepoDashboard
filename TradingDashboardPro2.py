@@ -410,14 +410,7 @@ def load_global_prices(symbol):
         "AMZN": "AMZ.DE"
     }
 
-    asia_map = {
-        "TSLA": "TSLA34.SA",  # fallback (nicht perfekt)
-        "NVDA": "NVDA34.SA",
-        "AAPL": "AAPL34.SA"
-    }
-
     eu_symbol = eu_map.get(symbol)
-    asia_symbol = asia_map.get(symbol)
 
     def get_last_price(sym):
         if not sym:
@@ -431,9 +424,32 @@ def load_global_prices(symbol):
             return np.nan
 
     eu_price = get_last_price(eu_symbol)
-    asia_price = get_last_price(asia_symbol)
 
-    return eu_price, asia_price, eu_symbol, asia_symbol
+    return eu_price, eu_symbol
+
+@st.cache_data(ttl=10)
+def load_futures_prices():
+    futures = {
+        "ES": "ES=F",   # S&P500
+        "NQ": "NQ=F",   # Nasdaq
+        "YM": "YM=F"    # Dow
+    }
+
+    prices = {}
+
+    for name, ticker in futures.items():
+        try:
+            df = yf.download(ticker, period="1d", interval="1m", progress=False)
+            if df.empty:
+                prices[name] = np.nan
+                continue
+
+            prices[name] = float(df["Close"].iloc[-1])
+
+        except:
+            prices[name] = np.nan
+
+    return prices
 
 @st.cache_data(ttl=60)
 def load_data_with_premarket(symbol, period, interval):
@@ -539,6 +555,7 @@ def normalize_df(df):
     return df
 
 df, symbol_eu = load_multi_exchange(symbol, period, interval)
+futures = load_futures_prices()
 df = normalize_df(df)
 df = df.loc[:, ~df.columns.duplicated()]
 
@@ -883,7 +900,7 @@ if df_fast.empty or len(df_fast) < 2:
 current = df_fast["Close"].iloc[-1]
 prev = df_fast["Close"].iloc[-2]
 
-eu_price, asia_price, eu_symbol, asia_symbol = load_global_prices(symbol)
+eu_price, eu_symbol = load_global_prices(symbol)
 
 def safe_last(series, default=np.nan):
     try:
@@ -907,7 +924,7 @@ rsi_last = df["RSI"].iloc[-1]
 if get_market_session() == "RTH":
     st_autorefresh(interval=5000, key="price_refresh")
 
-col1, col2, col3, col4, col5 = st.columns(5)
+col1, col2, col3, col4, col5, col6, col7 = st.columns(7)
 
 @st.cache_data(ttl=86400)
 def get_company_name(symbol):
@@ -964,14 +981,10 @@ if not np.isnan(eu_price):
 else:
     col4.metric("EU", "-")
 
-# ASIA PRICE
-if not np.isnan(asia_price):
-    col5.metric(
-        f"{asia_symbol}",
-        f"{asia_price:.2f}"
-    )
-else:
-    col5.metric("ASIA", "-")
+# FUTURES
+col5.metric("ES (S&P)", f"{futures['ES']:.0f}" if not np.isnan(futures['ES']) else "-")
+col6.metric("NQ (Nasdaq)", f"{futures['NQ']:.0f}" if not np.isnan(futures['NQ']) else "-")
+col7.metric("YM (Dow)", f"{futures['YM']:.0f}" if not np.isnan(futures['YM']) else "-")
 
 session = get_market_session()
 st.caption(f"Session: {session}")
