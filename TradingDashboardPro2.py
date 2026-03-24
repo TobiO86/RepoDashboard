@@ -428,7 +428,67 @@ def mark_premarket(df):
             df.at[idx, 'Session'] = 'RTH'
     return df
 
+@st.cache_data(ttl=60)
+def load_multi_exchange(symbol, period, interval):
+    # Mapping US -> EU (erweiterbar)
+    eu_map = {
+        "TSLA": "TSLA.DE",
+        "NVDA": "NVDA.DE",
+        "AAPL": "AAPL.DE",
+        "MSFT": "MSF.DE",
+        "AMZN": "AMZ.DE"
+    }
 
+    symbol_eu = eu_map.get(symbol)
+
+    # US Daten (bestehend)
+    df_us = yf.download(
+        symbol,
+        period=period,
+        interval=interval,
+        progress=False,
+        prepost=True
+    )
+
+    if isinstance(df_us.columns, pd.MultiIndex):
+        df_us.columns = df_us.columns.get_level_values(0)
+
+    df_us = df_us.dropna()
+
+    # Falls kein EU Symbol → return normal
+    if not symbol_eu:
+        df_us["EU_Close"] = np.nan
+        df_us["Spread"] = np.nan
+        return df_us, None
+
+    # EU Daten
+    df_eu = yf.download(
+        symbol_eu,
+        period=period,
+        interval=interval,
+        progress=False,
+        prepost=True
+    )
+
+    if isinstance(df_eu.columns, pd.MultiIndex):
+        df_eu.columns = df_eu.columns.get_level_values(0)
+
+    df_eu = df_eu.dropna()
+
+    # Timezone Alignment
+    try:
+        df_us.index = df_us.index.tz_convert("US/Eastern")
+        df_eu.index = df_eu.index.tz_convert("US/Eastern")
+    except:
+        pass
+
+    # Align
+    df_us["EU_Close"] = df_eu["Close"].reindex(df_us.index, method="ffill")
+
+    # Spread
+    df_us["Spread"] = df_us["Close"] - df_us["EU_Close"]
+
+    return df_us, symbol_eu
 
 def normalize_df(df):
     # MultiIndex komplett entfernen
@@ -443,7 +503,7 @@ def normalize_df(df):
 
     return df
 
-df = load_data_with_premarket(symbol, period, interval)
+df, symbol_eu = load_multi_exchange(symbol, period, interval)
 df = normalize_df(df)
 df = df.loc[:, ~df.columns.duplicated()]
 
@@ -454,6 +514,8 @@ if df.empty:
 
 # 3️⃣ Premarket markieren
 df = mark_premarket(df)
+df["EU_Close"] = df["EU_Close"].fillna(method="ffill")
+df["Spread"] = df["Spread"].fillna(0)
 
 if len(df) == 0:
     st.stop()
@@ -949,10 +1011,13 @@ else:
     row_heights = [main_height] + [small_height] * (rows - 1)
 
 
-rows = 5  # z.B. Price, Volume, Score, Indikator, Timeline
-row_heights = [0.5, 0.15, 0.15, 0.1, 0.1]  # Summe = 1
+rows = 5  # Price, Volume, Score, Indicator, Timeline
+row_heights = [0.5, 0.15, 0.15, 0.1, 0.1]
 titles = ["Price", "Volume", "Score", "Indicator", "Timeline"]
-timeline_row = rows  # = 5, letzte Row
+
+# Timeline row ist die letzte
+timeline_row = rows
+
 fig = make_subplots(
     rows=rows,
     cols=1,
@@ -966,26 +1031,17 @@ current_row = 1
 price_row = current_row
 current_row += 1
 
-volume_row = None
-rsi_row = None
-macd_row = None
-score_row = None
+volume_row = current_row if show_volume else None
+if show_volume: current_row += 1
 
-if show_volume:
-    volume_row = current_row
-    current_row += 1
+rsi_row = current_row if show_rsi else None
+if show_rsi: current_row += 1
 
-if show_rsi:
-    rsi_row = current_row
-    current_row += 1
+macd_row = current_row if show_macd else None
+if show_macd: current_row += 1
 
-if show_macd:
-    macd_row = current_row
-    current_row += 1
-
-if show_score:
-    score_row = current_row
-    current_row += 1
+score_row = current_row if show_score else None
+if show_score: current_row += 1
 
 # -----------------------
 # PRICE
@@ -1004,7 +1060,15 @@ if not pre_df.empty:
         decreasing_line_color='lightcoral',
         opacity=0.4
     ), row=price_row, col=1)
-    
+ 
+if symbol_eu:
+    fig.add_trace(go.Scatter(
+        x=df.index,
+        y=df["EU_Close"],
+        name=f"{symbol_eu} (EU)",
+        line=dict(dash="dot", width=2)
+    ), row=price_row, col=1)
+        
 fig.add_trace(go.Candlestick(
     x=df.index,
     open=df["Open"],
@@ -1292,6 +1356,26 @@ if show_score:
         y=df["ScoreDelta"],
         name="Delta"
         ), row=score_row, col=1
+    )
+    
+if "Spread" in df.columns:
+    fig.add_trace(go.Scatter(
+        x=df.index,
+        y=df["Spread"],
+        name="Spread (US-EU)",
+        line=dict(width=1)
+    ), row=score_row, col=1)
+    
+    fig.add_annotation(
+        x=df.index[-1],
+        y=df["Spread"].iloc[-1],
+        text=f"Spread {df['Spread'].iloc[-1]:.2f}",
+        showarrow=False,
+        xanchor="left",
+        row=score_row,
+        col=1,
+        yshift=40,
+        font=dict(size=12)
     )
     
 # -----------------------
