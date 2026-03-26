@@ -986,7 +986,7 @@ else:
 current_price = df_fast["Close"].iloc[-1]
 
 # 3️⃣ Delta vom Last Price zum aktuellen Preis
-delta_price = current_price - last_rth_price
+delta_price = last_rth_price -current_price
 delta_percent = (delta_price / last_rth_price) * 100 if last_rth_price != 0 else 0
 
 # Optional: EU-Preis
