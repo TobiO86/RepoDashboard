@@ -138,10 +138,10 @@ def scan_market(limit=100):
     symbols = filter_symbols_by_session(get_sp500_symbols())[:limit]
     results = []
 
-    # --- Chunk Download mit Threads ---
-    chunks = np.array_split(symbols, 5)  # mehrere Threads pro Chunk
+    chunks = np.array_split(symbols, 3)
     data_all = {}
 
+    # --- Download ---
     for chunk in chunks:
         chunk = list(chunk)
         if not chunk:
@@ -152,20 +152,18 @@ def scan_market(limit=100):
                 period="2d",
                 interval="5m",
                 group_by="ticker",
-                threads=True,
+                threads=False,
                 progress=False
             )
-            # MultiTicker Check
             if isinstance(d.columns, pd.MultiIndex):
                 for ticker in chunk:
-                    if ticker in d:
-                        df = d[ticker].dropna()
-                        if not df.empty:
-                            data_all[ticker] = df
+                    df = d.get(ticker)
+                    if df is not None and not df.empty:
+                        data_all[ticker] = df.dropna()
             else:
-                df = d.dropna()
+                df = d
                 if not df.empty:
-                    data_all[chunk[0]] = df
+                    data_all[chunk[0]] = df.dropna()
         except Exception as e:
             print(f"Download error for chunk {chunk}: {e}")
             continue
@@ -173,20 +171,20 @@ def scan_market(limit=100):
     # --- Scan ---
     for s in symbols:
         df = data_all.get(s)
-        if df is None or len(df) < 20:  # <50 war evtl. zu streng
+        if df is None or len(df) < 50:
             continue
+
         try:
-            df = df.copy()
+            # --- Indikatoren ---
             df["date"] = df.index.date
-            # VWAP
             df["VWAP_RTH"] = (df["Close"] * df["Volume"]).groupby(df["date"]).cumsum() / df["Volume"].groupby(df["date"]).cumsum()
-            # EMA
+            df["Volume_MA"] = df["Volume"].rolling(20).mean()
             ema20 = df["Close"].ewm(span=20).mean()
             ema50 = df["Close"].ewm(span=50).mean()
+
             price = df["Close"].iloc[-1]
             vwap = df["VWAP_RTH"].iloc[-1]
 
-            # RSI
             delta = df["Close"].diff()
             gain = delta.clip(lower=0)
             loss = -delta.clip(upper=0)
@@ -196,31 +194,44 @@ def scan_market(limit=100):
             rsi = 100 - (100 / (1 + rs))
             rsi = rsi.iloc[-1]
 
-            # Volume Spike
-            vol_ma = df["Volume"].rolling(20).mean().iloc[-1]
-            vol_spike = df["Volume"].iloc[-1] > 1.5 * vol_ma
+            volume = df["Volume"].iloc[-1]
+            volume_ma = df["Volume_MA"].iloc[-1]
+            vol_spike = volume > 1.5 * volume_ma
 
-            # Trend
+            high_max = df["High"].rolling(20).max()
+            low_min = df["Low"].rolling(20).min()
+            sweep_high = df["High"].iloc[-2] > high_max.iloc[-3]
+            sweep_low = df["Low"].iloc[-2] < low_min.iloc[-3]
+
             trend_bull = ema20.iloc[-1] > ema50.iloc[-1]
             trend_bear = ema20.iloc[-1] < ema50.iloc[-1]
 
-            # High / Low Sweep
-            high_max = df["High"].rolling(20).max()
-            low_min = df["Low"].rolling(20).min()
-            sweep_high = df["High"].iloc[-2] > high_max.iloc[-3] if len(df) > 2 else False
-            sweep_low = df["Low"].iloc[-2] < low_min.iloc[-3] if len(df) > 2 else False
-
-            # Scores
-            long_score = sum([sweep_low, price > vwap, vol_spike, trend_bull, rsi > 60])
-            short_score = sum([sweep_high, price < vwap, vol_spike, trend_bear, rsi < 40])
+            # --- Scoring ---
+            long_score = sum([
+                sweep_low, price > df["VWAP_RTH"], vol_spike, trend_bull, rsi > 60,
+                df["Close"].iloc[-1] > df["Close"].iloc[-3],
+                sweep_low and price > vwap
+            ])
+            short_score = sum([
+                sweep_high, price < vwap, vol_spike, trend_bear, rsi < 40,
+                sweep_high and price < vwap
+            ])
             score_delta = long_score - short_score
 
             setup = None
             final_score = 0
-            if long_score >= 4 and score_delta > 1:
+            if long_score >= 5 and score_delta > 1:
+                setup, final_score = "STRONG LONG", long_score
+            elif short_score >= 5 and score_delta < -1:
+                setup, final_score = "STRONG SHORT", short_score
+            elif long_score >= 4 and score_delta > 1:
                 setup, final_score = "LONG", long_score
             elif short_score >= 4 and score_delta < -1:
                 setup, final_score = "SHORT", short_score
+            elif long_score >= 3 and score_delta > 0:
+                setup, final_score = "EARLY LONG (Unsicher)", long_score
+            elif short_score >= 3 and score_delta < 0:
+                setup, final_score = "EARLY SHORT (Unsicher)", short_score
 
             if setup:
                 results.append({
@@ -229,7 +240,7 @@ def scan_market(limit=100):
                     "score": final_score,
                     "delta": score_delta,
                     "setup": setup,
-                    "volume": int(df["Volume"].iloc[-1])
+                    "volume": int(volume)
                 })
 
         except Exception as e:
@@ -240,8 +251,16 @@ def scan_market(limit=100):
     if df_res.empty:
         return [], []
 
-    df_res = df_res.sort_values("score", ascending=False)
-    return df_res.head(10).to_dict("records"), df_res.tail(10).to_dict("records")
+    # --- Longs und Shorts getrennt ---
+    gainers = df_res[df_res['setup'].str.contains("LONG")].sort_values("score", ascending=False)
+    losers  = df_res[df_res['setup'].str.contains("SHORT")].sort_values("score", ascending=False)
+
+    # --- Padding, falls <10 ---
+    def pad_list(df_list, n=10):
+        lst = df_list.to_dict("records")
+        return lst + [{}]*(n-len(lst)) if len(lst) < n else lst[:n]
+
+    return pad_list(gainers, 10), pad_list(losers, 10)
 
 
 # -----------------------
