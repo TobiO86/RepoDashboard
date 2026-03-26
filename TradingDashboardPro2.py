@@ -974,15 +974,18 @@ if df_fast.empty or len(df_fast) < 2:
     st.warning("Keine Live-Daten verfügbar")
     st.stop()
 
-# Aktueller Preis inkl. Pre/Post aus df_fast (wie im Chart)
+# 1️⃣ Letzter regulärer Schlusskurs (RTH)
+df_rth = df[df["Session"] == "RTH"]
+last_rth_close = df_rth["Close"].iloc[-1] if not df_rth.empty else df["Close"].iloc[-1]
+
+# 2️⃣ Aktueller Pre/Post-Preis aus 1m-Daten
 current_price = df_fast["Close"].iloc[-1]
 
-# Delta gegen vorherige Kerze
-prev_price = df_fast["Close"].iloc[-2] if len(df_fast) >= 2 else current_price
-delta_price = current_price - prev_price
-delta_percent = (delta_price / prev_price) * 100 if prev_price != 0 else 0
+# 3️⃣ Delta zum letzten RTH Close
+delta_price = current_price - last_rth_close
+delta_percent = (delta_price / last_rth_close) * 100 if last_rth_close != 0 else 0
 
-# Optional: EU Preis
+# Optional: EU-Preis
 eu_price, eu_symbol = load_global_prices(symbol)
 eu_display = f" | EU: ${eu_price:.2f}" if not np.isnan(eu_price) else ""
 
@@ -1030,9 +1033,9 @@ display_name = f"{name} ({symbol})" if name != symbol else symbol
 
 col1, col2, col3, col4 = st.columns(4)
 
-# Anzeige in col1
+# 4️⃣ Metric
 col1.metric(
-    label=f"{display_name} Aktueller Preis{eu_display}",
+    label=f"{display_name} (RTH vs Current){eu_display}",
     value=f"${current_price:.2f}",
     delta=f"{delta_price:+.2f} ({delta_percent:+.2f}%)"
 )
