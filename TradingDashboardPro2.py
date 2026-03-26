@@ -839,7 +839,7 @@ for i in range(start, len(df)):
     if prev["sweep_low"]:
         score_long += weights["sweep"]
 
-    if curr["Close"] > curr["VWAP"]:
+    if curr["Close"] > curr["VWAP_RTH"]:
         score_long += weights["vwap"]
 
     if curr["vol_spike"]:
@@ -857,7 +857,7 @@ for i in range(start, len(df)):
         score_long += weights["delta"]
 
     # Confirmation (Boost)
-    if prev["sweep_low"] and curr["Close"] > curr["VWAP"]:
+    if prev["sweep_low"] and curr["Close"] > curr["VWAP_RTH"]:
         score_long += weights["confirmation"]
 
     # Sell the news Reversal
@@ -883,7 +883,7 @@ for i in range(start, len(df)):
     if prev["sweep_high"]:
         score_short += weights["sweep"]
 
-    if curr["Close"] < curr["VWAP"]:
+    if curr["Close"] < curr["VWAP_RTH"]:
         score_short += weights["vwap"]
 
     if curr["vol_spike"]:
@@ -901,7 +901,7 @@ for i in range(start, len(df)):
         score_short += weights["delta"]
 
     # Confirmation (Boost)
-    if prev["sweep_high"] and curr["Close"] < curr["VWAP"]:
+    if prev["sweep_high"] and curr["Close"] < curr["VWAP_RTH"]:
         score_short += weights["confirmation"]
 
     # Sell the news Reversal
@@ -1797,7 +1797,7 @@ if current_signal and current_signal != st.session_state.last_signal:
     {current_signal}
     Score: {score}/8
 
-    VWAP: {df['VWAP'].iloc[-1]:.2f}
+    VWAP: {df['VWAP_RTH'].iloc[-1]:.2f}
     RSI: {df['RSI'].iloc[-1]:.2f}
 
     SL: {sl_text}
