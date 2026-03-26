@@ -783,7 +783,6 @@ df["SellNewsLong"] = False
 
 start = max(2, len(df) - 100)
 
-VWAP = "VWAP_RTH"
 
 for i in range(start, len(df)):
     prev = df.iloc[i-1]
@@ -792,8 +791,8 @@ for i in range(start, len(df)):
     # SHORT: Fake Breakout nach oben → Reversal
     if (
         prev["sweep_high"] and
-        prev["Close"] > prev[VWAP] and   # vorher stark
-        curr["Close"] < curr[VWAP] and   # jetzt schwach
+        prev["Close"] > prev["VWAP_RTH"] and   # vorher stark
+        curr["Close"] < curr["VWAP_RTH"] and   # jetzt schwach
         curr["Close"] < prev["Close"]      # Momentum kippt
     ):
         df.at[df.index[i], "SellNewsShort"] = True
@@ -801,8 +800,8 @@ for i in range(start, len(df)):
     # LONG: Fake Breakdown → Reversal
     if (
         prev["sweep_low"] and
-        prev["Close"] < prev[VWAP] and
-        curr["Close"] > curr[VWAP] and
+        prev["Close"] < prev["VWAP_RTH"] and
+        curr["Close"] > curr["VWAP_RTH"] and
         curr["Close"] > prev["Close"]
     ):
         df.at[df.index[i], "SellNewsLong"] = True  
@@ -835,11 +834,23 @@ for i in range(start, len(df)):
         "sellnews": 2
     }
 
+    def get_vwap(curr):
+        if curr["Session"] == "RTH":
+            return curr["VWAP_RTH"]
+        elif curr["Session"] == "PREMARKET":
+            return curr["VWAP_PRE"]
+        elif curr["Session"] == "AFTERHOURS":
+            return curr["VWAP_AH"]
+        else:
+            return curr["Close"]  # fallback
+
     # Core Faktoren
     if prev["sweep_low"]:
         score_long += weights["sweep"]
 
-    if curr["Close"] > curr["VWAP_RTH"]:
+    vwap = get_vwap(curr)
+
+    if curr["Close"] > vwap:
         score_long += weights["vwap"]
 
     if curr["vol_spike"]:
@@ -883,7 +894,7 @@ for i in range(start, len(df)):
     if prev["sweep_high"]:
         score_short += weights["sweep"]
 
-    if curr["Close"] < curr["VWAP_RTH"]:
+    if curr["Close"] < vwap:
         score_short += weights["vwap"]
 
     if curr["vol_spike"]:
