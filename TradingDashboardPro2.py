@@ -959,8 +959,8 @@ for i in range(1, len(df)):
 # PRICE METRICS
 # -----------------------
 
-df_fast = load_fast_price(symbol)
-
+# Aktueller Preis aus 1m-Daten inkl. Pre/Post
+df_fast = load_fast_price(symbol)  # schon vorhanden
 if df_fast.empty or len(df_fast) < 2:
     st.warning("Keine Live-Daten verfügbar")
     st.stop()
@@ -968,6 +968,16 @@ if df_fast.empty or len(df_fast) < 2:
 current = df_fast["Close"].iloc[-1]
 prev = df_fast["Close"].iloc[-2]
 
+# VWAP inkl. Pre/Post
+typical_price = (df_fast["High"] + df_fast["Low"] + df_fast["Close"]) / 3
+vwap_last = (typical_price * df_fast["Volume"]).cumsum() / df_fast["Volume"].cumsum()
+vwap_last = vwap_last.iloc[-1]
+
+# Change berechnen
+change = current - prev
+change_percent = (change / prev) * 100
+
+# EU-Preis (falls vorhanden)
 eu_price, eu_symbol = load_global_prices(symbol)
 
 def safe_last(series, default=np.nan):
@@ -1032,19 +1042,22 @@ else:
 
     col1.metric(
         display_name,
-        f"{current:.2f}",
-        f"{change:.2f} ({change_percent:.2f}%)"
+        f"${current:.2f}",
+        f"Δ{change:.2f} ({change_percent:.2f}%) | VWAP: ${vwap_last:.2f}"
     )
 
 
-col2.metric("VWAP", f"{vwap_last:.2f}")
+
+col2.metric("VWAP", f"${vwap_last:.2f}")
+
+rsi_last = df["RSI"].iloc[-1]
 col3.metric("RSI", f"{rsi_last:.2f}")
 
 # EU PRICE
 if not np.isnan(eu_price):
     col4.metric(
         f"{eu_symbol}",
-        f"{eu_price:.2f}"
+        f"${eu_price:.2f}"
     )
 else:
     col4.metric("EU", "-")
