@@ -974,21 +974,17 @@ if df_fast.empty or len(df_fast) < 2:
     st.warning("Keine Live-Daten verfügbar")
     st.stop()
 
+# Letzter Preis inkl. Pre/Post
 df_fast_sessions = mark_premarket(df_fast)
+current_price = df_fast["Close"].iloc[-1]
 
-# Letzter RTH-Close
-rth_closes = df_fast_sessions.loc[df_fast_sessions["Session"] == "RTH", "Close"]
-if not rth_closes.empty:
-    last_rth_close = rth_closes.iloc[-1]
-else:
-    last_rth_close = df_fast["Close"].dropna().iloc[-1]
-
-# Aktueller Preis inkl. Pre/Post
-current_price = df_fast["Close"].dropna().iloc[-1]
-
-# Delta korrekt berechnen
-delta_price = current_price - last_rth_close
-delta_percent = (delta_price / last_rth_close) * 100 if last_rth_close != 0 else 0
+# Für Delta: Vergleich zum vorherigen Close
+# Hier kann man wählen:
+# a) letzter RTH-Close (gestern/letzte RTH-Kerze)
+# b) letzter Close allgemein
+last_close = df_fast["Close"].iloc[-2]  # fallback auf vorherige Kerze
+delta_price = current_price - last_close
+delta_percent = (delta_price / last_close) * 100 if last_close != 0 else 0
 
 # 6️⃣ VWAP sicher berechnen
 tp = (df_fast["High"] + df_fast["Low"] + df_fast["Close"]) / 3
@@ -1044,16 +1040,12 @@ display_name = f"{name} ({symbol})" if name != symbol else symbol
 
 col1, col2, col3, col4 = st.columns(4)
 
-# Metric anzeigen
+# Anzeige in col1
 col1.metric(
-    label=display_name,
+    label=f"{symbol} Preis",
     value=f"${current_price:.2f}",
-    delta=f"{delta_price:+.2f} ({delta_percent:+.2f}%) | VWAP: ${vwap_last:.2f}{eu_display}"
+    delta=f"{delta_price:.2f} ({delta_percent:.2f}%)"
 )
-
-
-
-
 col2.metric("VWAP", f"${vwap_last:.2f}")
 
 rsi_last = df["RSI"].iloc[-1]
