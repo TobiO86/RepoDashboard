@@ -959,33 +959,6 @@ for i in range(1, len(df)):
 # PRICE METRICS
 # -----------------------
 
-# Aktueller Preis aus 1m-Daten inkl. Pre/Post
-df_fast = load_fast_price(symbol)  # schon vorhanden
-if df_fast.empty or len(df_fast) < 2:
-    st.warning("Keine Live-Daten verfügbar")
-    st.stop()
-
-# Letzter RTH-Close (für korrektes Delta)
-df_rth = df_fast[df_fast.index.map(lambda x: mark_premarket(df_fast).loc[x, "Session"] == "RTH")]
-last_rth_close = df_rth["Close"].iloc[-1] if not df_rth.empty else df_fast["Close"].iloc[-2]
-
-# Aktueller Preis inkl. Pre/Post
-current = df_fast["Close"].iloc[-1]
-
-# Prozentuale Änderung korrekt berechnen
-change = current - last_rth_close
-change_percent = (change / last_rth_close) * 100
-prev = df_fast["Close"].iloc[-2]
-
-# VWAP inkl. Pre/Post
-typical_price = (df_fast["High"] + df_fast["Low"] + df_fast["Close"]) / 3
-vwap_last = (typical_price * df_fast["Volume"]).cumsum() / df_fast["Volume"].cumsum()
-vwap_last = vwap_last.iloc[-1]
-
-
-# EU-Preis (falls vorhanden)
-eu_price, eu_symbol = load_global_prices(symbol)
-
 def safe_last(series, default=np.nan):
     try:
         val = series.iloc[-1]
@@ -993,8 +966,33 @@ def safe_last(series, default=np.nan):
             return default
         return float(val)
     except:
-        return default
+        return default  
 
+# Aktueller Preis aus 1m-Daten inkl. Pre/Post
+df_fast = load_fast_price(symbol)  # schon vorhanden
+if df_fast.empty or len(df_fast) < 2:
+    st.warning("Keine Live-Daten verfügbar")
+    st.stop()
+
+# Letzter RTH-Close für korrektes Delta
+df_rth = df_fast[mark_premarket(df_fast)["Session"] == "RTH"]
+last_rth_close = safe_last(df_rth["Close"], default=prev)
+
+# Aktueller Preis inkl. Pre/Post
+current_price = safe_last(df_fast["Close"], default=prev)
+
+# Prozentuale Änderung relativ zum letzten RTH-Close
+delta_price = current_price - last_rth_close
+delta_percent = (delta_price / last_rth_close) * 100
+
+# VWAP inkl. Pre/Post
+typical_price = (df_fast["High"] + df_fast["Low"] + df_fast["Close"]) / 3
+vwap_last = (typical_price * df_fast["Volume"]).cumsum() / df_fast["Volume"].cumsum()
+vwap_last = safe_last(vwap_last, default=current_price)
+
+# Optional: EU-Preis falls vorhanden
+eu_price, eu_symbol = load_global_prices(symbol)
+eu_display = f" | EU: ${eu_price:.2f}" if not np.isnan(eu_price) else ""
 
 vwap_last = (df_fast["Close"] * df_fast["Volume"]).cumsum() / df_fast["Volume"].cumsum()
 vwap_last = vwap_last.iloc[-1]
@@ -1040,16 +1038,12 @@ display_name = f"{name} ({symbol})" if name != symbol else symbol
 
 col1, col2, col3, col4 = st.columns(4)
 
-if np.isnan(current) or np.isnan(prev):
-    st.warning("Keine Live-Daten verfügbar")
-else:
-
-    # Metric aktualisieren
-    col1.metric(
-        display_name,
-        f"${current:.2f}",
-        f"Δ{change:.2f} ({change_percent:.2f}%) | VWAP: ${vwap_last:.2f}"
-    )
+# Metric anzeigen
+col1.metric(
+    label=display_name,
+    value=f"${current_price:.2f}",
+    delta=f"{delta_price:+.2f} ({delta_percent:+.2f}%) | VWAP: ${vwap_last:.2f}{eu_display}"
+)
 
 
 
