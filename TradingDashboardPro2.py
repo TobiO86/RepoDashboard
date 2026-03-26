@@ -974,23 +974,21 @@ if df_fast.empty or len(df_fast) < 2:
     st.warning("Keine Live-Daten verfügbar")
     st.stop()
 
-# 2️⃣ Session markieren
-df_fast = mark_premarket(df_fast)
+df_fast_sessions = mark_premarket(df_fast)
 
-
-# 3️⃣ Letzter RTH-Close (Fallback auf letzte verfügbare Kerze)
-rth_closes = df_fast.loc[df_fast["Session"]=="RTH", "Close"]
+# Letzter RTH-Close
+rth_closes = df_fast_sessions.loc[df_fast_sessions["Session"] == "RTH", "Close"]
 if not rth_closes.empty:
     last_rth_close = rth_closes.iloc[-1]
 else:
-    last_rth_close = df_fast["Close"].iloc[-1]  # fallback auf letzte Close-Kerze
+    last_rth_close = df_fast["Close"].dropna().iloc[-1]
 
-# 4️⃣ Aktueller Preis inkl. Pre/Post
-current_price = df_fast["Close"].iloc[-1]
+# Aktueller Preis inkl. Pre/Post
+current_price = df_fast["Close"].dropna().iloc[-1]
 
-# 5️⃣ Delta
+# Delta korrekt berechnen
 delta_price = current_price - last_rth_close
-delta_percent = (delta_price / last_rth_close * 100) if last_rth_close != 0 else 0
+delta_percent = (delta_price / last_rth_close) * 100 if last_rth_close != 0 else 0
 
 # 6️⃣ VWAP sicher berechnen
 tp = (df_fast["High"] + df_fast["Low"] + df_fast["Close"]) / 3
