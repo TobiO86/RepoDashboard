@@ -965,7 +965,16 @@ if df_fast.empty or len(df_fast) < 2:
     st.warning("Keine Live-Daten verfügbar")
     st.stop()
 
+# Letzter RTH-Close (für korrektes Delta)
+df_rth = df_fast[df_fast.index.map(lambda x: mark_premarket(df_fast).loc[x, "Session"] == "RTH")]
+last_rth_close = df_rth["Close"].iloc[-1] if not df_rth.empty else df_fast["Close"].iloc[-2]
+
+# Aktueller Preis inkl. Pre/Post
 current = df_fast["Close"].iloc[-1]
+
+# Prozentuale Änderung korrekt berechnen
+change = current - last_rth_close
+change_percent = (change / last_rth_close) * 100
 prev = df_fast["Close"].iloc[-2]
 
 # VWAP inkl. Pre/Post
@@ -973,9 +982,6 @@ typical_price = (df_fast["High"] + df_fast["Low"] + df_fast["Close"]) / 3
 vwap_last = (typical_price * df_fast["Volume"]).cumsum() / df_fast["Volume"].cumsum()
 vwap_last = vwap_last.iloc[-1]
 
-# Change berechnen
-change = current - prev
-change_percent = (change / prev) * 100
 
 # EU-Preis (falls vorhanden)
 eu_price, eu_symbol = load_global_prices(symbol)
@@ -1040,11 +1046,13 @@ else:
     change = current - prev
     change_percent = (change / prev) * 100
 
+    # Metric aktualisieren
     col1.metric(
         display_name,
         f"${current:.2f}",
         f"Δ{change:.2f} ({change_percent:.2f}%) | VWAP: ${vwap_last:.2f}"
     )
+
 
 
 
