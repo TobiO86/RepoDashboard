@@ -467,18 +467,33 @@ def load_futures_prices():
     futures = {
         "ES": "ES=F",   # S&P500
         "NQ": "NQ=F",   # Nasdaq
-        "YM": "YM=F"    # Dow
+        "YM": "YM=F",   # Dow
+        "CL": "CL=F",   # Öl
+        "NG": "NG=F",   # Gas
+        "GC": "GC=F",   # Gold
+        "SI": "SI=F",   # Silber
+        "HG": "HG=F",   # Kupfer
+        "ZN": "ZN=F",   # 10 Jahres Anleihen
+        "ZB": "ZB=F",   # 30 Jahres Anleihen
+        "DX": "DX=F"    # Dollar
     }
 
     prices = {}
 
     for name, ticker in futures.items():
         try:
-            df = yf.download(ticker, period="1d", interval="1m", progress=False)
+            df = yf.download(
+                ticker,
+                period="1d",
+                interval="1m",
+                progress=False,
+                prepost=True  # <-- Pre- und After-Hours aktiv
+            )
             if df.empty:
                 prices[name] = np.nan
                 continue
 
+            # Letzter Close, inkl. Pre/After-Hours
             prices[name] = float(df["Close"].iloc[-1])
 
         except:
@@ -677,20 +692,20 @@ df["date"] = df.index.date
 def compute_vwap(df, rth_only=True):
     df = df.copy()
 
+    # Typischer Preis
     tp = (df["High"] + df["Low"] + df["Close"]) / 3
 
+    # Session-Tag erstellen (immer)
+    df["session_date"] = df["Session"] + "_" + df.index.date.astype(str)
+
+    # Nur RTH berücksichtigen?
     if rth_only:
-        # Nur RTH zählen
         df["vol_rth"] = np.where(df["Session"] == "RTH", df["Volume"], 0)
         df["pv_rth"] = tp * df["vol_rth"]
-
         df["cum_vol"] = df.groupby(df.index.date)["vol_rth"].cumsum()
         df["cum_pv"] = df.groupby(df.index.date)["pv_rth"].cumsum()
-
     else:
-        # Premarket + RTH getrennt
-        df["session_date"] = df["Session"] + "_" + df.index.date.astype(str)
-
+        # Premarket + RTH + Afterhours getrennt
         df["cum_vol"] = df.groupby("session_date")["Volume"].cumsum()
         df["cum_pv"] = (tp * df["Volume"]).groupby(df["session_date"]).cumsum()
 
