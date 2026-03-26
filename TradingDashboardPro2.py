@@ -1002,8 +1002,8 @@ rsi_last = df["RSI"].iloc[-1]
 # AUTO REFRESH (NUR METRICS)
 # -----------------------
 
-if get_market_session() == "RTH":
-    st_autorefresh(interval=5000, key="price_refresh")
+
+st_autorefresh(interval=5000, key="price_refresh")
 
 @st.cache_data(ttl=86400)
 def get_company_name(symbol):
