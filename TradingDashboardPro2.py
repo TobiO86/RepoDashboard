@@ -975,7 +975,12 @@ if df_fast.empty or len(df_fast) < 2:
     st.stop()
 
 # 1️⃣ Letzter RTH Close (Last Price)
-last_rth_price = df[df["Session"] == "RTH"]["Close"].iloc[-1]
+rth_df = df[df["Session"] == "RTH"]
+if not rth_df.empty:
+    last_rth_price = rth_df["Close"].iloc[-1]
+else:
+    # fallback, z.B. letzte verfügbare Kerze
+    last_rth_price = df["Close"].iloc[-1]
 
 # 2️⃣ Aktueller Preis (Premarket / Afterhours / letzte Kerze)
 current_price = df_fast["Close"].iloc[-1]
