@@ -1038,26 +1038,25 @@ else:
 col5, col6, col7 = st.columns(3)
 
 # FUTURES
-col5.metric("ES (S&P)", f"{futures['ES']:.0f}" if not np.isnan(futures['ES']) else "-")
-col6.metric("NQ (Nasdaq)", f"{futures['NQ']:.0f}" if not np.isnan(futures['NQ']) else "-")
-col7.metric("YM (Dow)", f"{futures['YM']:.0f}" if not np.isnan(futures['YM']) else "-")
+col5.metric("ES (S&P)", f"{futures.get['ES']:.0f}" if not np.isnan(futures.get['ES']) else "-")
+col6.metric("NQ (Nasdaq)", f"{futures.get['NQ']:.0f}" if not np.isnan(futures.get['NQ']) else "-")
+col7.metric("YM (Dow)", f"{futures.get['YM']:.0f}" if not np.isnan(futures.get['YM']) else "-")
 
 # ROW 3 (Commodities / weitere Futures)
 col8, col9, col10, col11 = st.columns(4)
 
-col8.metric("CL (Oil)",f"{futures['CL']:.2f}" if not np.isnan(futures['CL']) else "-")
-col9.metric("NG (Gas)",f"{futures['NG']:.2f}" if not np.isnan(futures['NG']) else "-")
-col10.metric("GC (Gold)",f"{futures['GC']:.2f}" if not np.isnan(futures['GC']) else "-")
-
-col11.metric("SI (Silver)",f"{futures['SI']:.2f}" if not np.isnan(futures['SI']) else "-")
+col8.metric("CL (Oil)",f"{futures.get('CL', np.nan):.2f}" if not np.isnan(futures.get('CL', np.nan)) else "-")
+col9.metric("NG (Gas)",f"{futures.get('NG', np.nan):.2f}" if not np.isnan(futures.get('NG', np.nan)) else "-")
+col10.metric("GC (Gold)",f"{futures.get('GC', np.nan):.2f}" if not np.isnan(futures.get('GC', np.nan)) else "-")
+col11.metric("SI (Silver)",f"{futures.get['SI']:.2f}" if not np.isnan(futures.get['SI']) else "-")
 
 # ROW 4 (Macro Futures)
 col12, col13, col14, col15 = st.columns(4)
 
-col12.metric("HG (Copper)",f"{futures['HG']:.2f}" if not np.isnan(futures['HG']) else "-")
-col13.metric("ZN (10Y)",f"{futures['ZN']:.2f}" if not np.isnan(futures['ZN']) else "-")
-col14.metric("ZB (30Y)", f"{futures['ZB']:.2f}" if not np.isnan(futures['ZB']) else "-")
-col15.metric("DX (Dollar)", f"{futures['DX']:.2f}" if not np.isnan(futures['DX']) else "-")
+col12.metric("HG (Copper)",f"{futures.get['HG']:.2f}" if not np.isnan(futures.get['HG']) else "-")
+col13.metric("ZN (10Y)",f"{futures.get['ZN']:.2f}" if not np.isnan(futures.get['ZN']) else "-")
+col14.metric("ZB (30Y)", f"{futures.get['ZB']:.2f}" if not np.isnan(futures.get['ZB']) else "-")
+col15.metric("DX (Dollar)", f"{futures.get['DX']:.2f}" if not np.isnan(futures.get['DX']) else "-")
 
 session = get_market_session()
 st.caption(f"Session: {session}")
