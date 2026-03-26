@@ -1043,8 +1043,6 @@ col1, col2, col3, col4 = st.columns(4)
 if np.isnan(current) or np.isnan(prev):
     st.warning("Keine Live-Daten verfügbar")
 else:
-    change = current - prev
-    change_percent = (change / prev) * 100
 
     # Metric aktualisieren
     col1.metric(
