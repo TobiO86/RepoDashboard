@@ -1040,12 +1040,12 @@ col1, col2, col3, col4 = st.columns(4)
 # 4️⃣ Metric
 col1.metric(
     label=f"{display_name} (RTH vs Current){eu_display}", 
-    value=f"${current_price:.2f}",
+    value=f"${current_price:.2f}"
 )
 
 col2.metric(
     label="Current Price",
-    value=f"${last_rth_price:.2f}"
+    value=f"${last_rth_price:.2f}",
     delta=f"{delta_price:+.2f} ({delta_percent:+.2f}%)"
 )
 
