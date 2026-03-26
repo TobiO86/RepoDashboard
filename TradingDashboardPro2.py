@@ -974,25 +974,15 @@ if df_fast.empty or len(df_fast) < 2:
     st.warning("Keine Live-Daten verfügbar")
     st.stop()
 
-# Letzter Preis inkl. Pre/Post
-df_fast_sessions = mark_premarket(df_fast)
+# Aktueller Preis inkl. Pre/Post aus df_fast (wie im Chart)
 current_price = df_fast["Close"].iloc[-1]
 
-# Für Delta: Vergleich zum vorherigen Close
-# Hier kann man wählen:
-# a) letzter RTH-Close (gestern/letzte RTH-Kerze)
-# b) letzter Close allgemein
-last_close = df_fast["Close"].iloc[-2]  # fallback auf vorherige Kerze
-delta_price = current_price - last_close
-delta_percent = (delta_price / last_close) * 100 if last_close != 0 else 0
+# Delta gegen vorherige Kerze
+prev_price = df_fast["Close"].iloc[-2] if len(df_fast) >= 2 else current_price
+delta_price = current_price - prev_price
+delta_percent = (delta_price / prev_price) * 100 if prev_price != 0 else 0
 
-# 6️⃣ VWAP sicher berechnen
-tp = (df_fast["High"] + df_fast["Low"] + df_fast["Close"]) / 3
-cum_vol = df_fast["Volume"].cumsum()
-cum_pv = (tp * df_fast["Volume"]).cumsum()
-vwap_last = (cum_pv / cum_vol).iloc[-1]
-
-# Optional: EU-Preis falls vorhanden
+# Optional: EU Preis
 eu_price, eu_symbol = load_global_prices(symbol)
 eu_display = f" | EU: ${eu_price:.2f}" if not np.isnan(eu_price) else ""
 
@@ -1042,9 +1032,9 @@ col1, col2, col3, col4 = st.columns(4)
 
 # Anzeige in col1
 col1.metric(
-    label=f"{symbol} Preis",
+    label=f"{display_name} Aktueller Preis{eu_display}",
     value=f"${current_price:.2f}",
-    delta=f"{delta_price:.2f} ({delta_percent:.2f}%)"
+    delta=f"{delta_price:+.2f} ({delta_percent:+.2f}%)"
 )
 col2.metric("VWAP", f"${vwap_last:.2f}")
 
