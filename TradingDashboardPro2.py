@@ -689,30 +689,15 @@ df["MACD_hist"] = df["MACD"] - df["MACD_signal"]
 
 df["date"] = df.index.date
 
-def compute_vwap(df, rth_only=True):
+def compute_vwap(df):
     df = df.copy()
 
-    # Typischer Preis
     tp = (df["High"] + df["Low"] + df["Close"]) / 3
 
-    # Session-Tag erstellen (immer)
-    df["session_date"] = df["Session"] + "_" + df.index.date.astype(str)
+    df["cum_vol"] = df["Volume"].cumsum()
+    df["cum_pv"] = (tp * df["Volume"]).cumsum()
 
-    # Nur RTH berücksichtigen?
-    if rth_only:
-        df["vol_rth"] = np.where(df["Session"] == "RTH", df["Volume"], 0)
-        df["pv_rth"] = tp * df["vol_rth"]
-        df["cum_vol"] = df.groupby(df.index.date)["vol_rth"].cumsum()
-        df["cum_pv"] = df.groupby(df.index.date)["pv_rth"].cumsum()
-    else:
-        # Premarket + RTH + Afterhours getrennt
-        df["cum_vol"] = df.groupby("session_date")["Volume"].cumsum()
-        df["cum_pv"] = (tp * df["Volume"]).groupby(df["session_date"]).cumsum()
-
-    vwap = df["cum_pv"] / df["cum_vol"]
-    return vwap
-
-df["VWAP"] = compute_vwap(df, rth_only=show_rth_only_vwap)
+    return df["cum_pv"] / df["cum_vol"]
 
 typical_price = (df["High"] + df["Low"] + df["Close"]) / 3
 vwap_dev = (typical_price - df["VWAP"]).rolling(20).std()
