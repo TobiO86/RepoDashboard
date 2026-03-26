@@ -974,27 +974,29 @@ if df_fast.empty or len(df_fast) < 2:
     st.warning("Keine Live-Daten verfügbar")
     st.stop()
 
-# Session markieren einmalig
-df_fast_sessions = mark_premarket(df_fast)
+# 2️⃣ Session markieren
+df_fast = mark_premarket(df_fast)
 
-# Letzter RTH-Close
-df_rth = df_fast[df_fast_sessions["Session"] == "RTH"]
-if not df_rth.empty:
-    last_rth_close = df_rth["Close"].iloc[-1]
+
+# 3️⃣ Letzter RTH-Close (Fallback auf letzte verfügbare Kerze)
+rth_closes = df_fast.loc[df_fast["Session"]=="RTH", "Close"]
+if not rth_closes.empty:
+    last_rth_close = rth_closes.iloc[-1]
 else:
-    last_rth_close = df_fast["Close"].iloc[-2]  # fallback
+    last_rth_close = df_fast["Close"].iloc[-1]  # fallback auf letzte Close-Kerze
 
-# Aktueller Preis inkl. Pre/Post
+# 4️⃣ Aktueller Preis inkl. Pre/Post
 current_price = df_fast["Close"].iloc[-1]
 
-# Delta korrekt berechnen
+# 5️⃣ Delta
 delta_price = current_price - last_rth_close
-delta_percent = (delta_price / last_rth_close) * 100 if last_rth_close != 0 else 0
+delta_percent = (delta_price / last_rth_close * 100) if last_rth_close != 0 else 0
 
-# VWAP inkl. Pre/Post
-typical_price = (df_fast["High"] + df_fast["Low"] + df_fast["Close"]) / 3
-vwap_last = (typical_price * df_fast["Volume"]).cumsum() / df_fast["Volume"].cumsum()
-vwap_last = vwap_last.iloc[-1]
+# 6️⃣ VWAP sicher berechnen
+tp = (df_fast["High"] + df_fast["Low"] + df_fast["Close"]) / 3
+cum_vol = df_fast["Volume"].cumsum()
+cum_pv = (tp * df_fast["Volume"]).cumsum()
+vwap_last = (cum_pv / cum_vol).iloc[-1]
 
 # Optional: EU-Preis falls vorhanden
 eu_price, eu_symbol = load_global_prices(symbol)
