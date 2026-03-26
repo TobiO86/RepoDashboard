@@ -295,6 +295,8 @@ with st.sidebar.expander("🔥 Scanner PRO MAX", expanded=False):
     )
 
 live_mode = st.sidebar.checkbox("⚡ Live Mode (RTH only)", True)
+show_rth_only_vwap = st.sidebar.checkbox("VWAP nur RTH", True)
+color_sessions = st.sidebar.checkbox("Sessions farbig", True)
 
 session = get_market_session()
 
@@ -672,12 +674,30 @@ df["MACD_hist"] = df["MACD"] - df["MACD_signal"]
 
 df["date"] = df.index.date
 
-def compute_vwap(df):
+def compute_vwap(df, rth_only=True):
+    df = df.copy()
+
     tp = (df["High"] + df["Low"] + df["Close"]) / 3
-    vwap = (tp * df["Volume"]).cumsum() / df["Volume"].cumsum()
+
+    if rth_only:
+        # Nur RTH zählen
+        df["vol_rth"] = np.where(df["Session"] == "RTH", df["Volume"], 0)
+        df["pv_rth"] = tp * df["vol_rth"]
+
+        df["cum_vol"] = df.groupby(df.index.date)["vol_rth"].cumsum()
+        df["cum_pv"] = df.groupby(df.index.date)["pv_rth"].cumsum()
+
+    else:
+        # Premarket + RTH getrennt
+        df["session_date"] = df["Session"] + "_" + df.index.date.astype(str)
+
+        df["cum_vol"] = df.groupby("session_date")["Volume"].cumsum()
+        df["cum_pv"] = (tp * df["Volume"]).groupby(df["session_date"]).cumsum()
+
+    vwap = df["cum_pv"] / df["cum_vol"]
     return vwap
 
-df["VWAP"] = compute_vwap(df)
+df["VWAP"] = compute_vwap(df, rth_only=show_rth_only_vwap)
 
 typical_price = (df["High"] + df["Low"] + df["Close"]) / 3
 vwap_dev = (typical_price - df["VWAP"]).rolling(20).std()
@@ -957,8 +977,6 @@ rsi_last = df["RSI"].iloc[-1]
 if get_market_session() == "RTH":
     st_autorefresh(interval=5000, key="price_refresh")
 
-col1, col2, col3, col4, col5, col6, col7 = st.columns(7)
-
 @st.cache_data(ttl=86400)
 def get_company_name(symbol):
     try:
@@ -989,6 +1007,8 @@ name = get_company_name(symbol)
 
 display_name = f"{name} ({symbol})" if name != symbol else symbol
 
+col1, col2, col3, col4 = st.columns(4)
+
 if np.isnan(current) or np.isnan(prev):
     st.warning("Keine Live-Daten verfügbar")
 else:
@@ -1014,10 +1034,30 @@ if not np.isnan(eu_price):
 else:
     col4.metric("EU", "-")
 
+# ROW 2 (Futures separat)
+col5, col6, col7 = st.columns(3)
+
 # FUTURES
 col5.metric("ES (S&P)", f"{futures['ES']:.0f}" if not np.isnan(futures['ES']) else "-")
 col6.metric("NQ (Nasdaq)", f"{futures['NQ']:.0f}" if not np.isnan(futures['NQ']) else "-")
 col7.metric("YM (Dow)", f"{futures['YM']:.0f}" if not np.isnan(futures['YM']) else "-")
+
+# ROW 3 (Commodities / weitere Futures)
+col8, col9, col10, col11 = st.columns(4)
+
+col8.metric("CL (Oil)",f"{futures['CL']:.2f}" if not np.isnan(futures['CL']) else "-")
+col9.metric("NG (Gas)",f"{futures['NG']:.2f}" if not np.isnan(futures['NG']) else "-")
+col10.metric("GC (Gold)",f"{futures['GC']:.2f}" if not np.isnan(futures['GC']) else "-")
+
+col11.metric("SI (Silver)",f"{futures['SI']:.2f}" if not np.isnan(futures['SI']) else "-")
+
+# ROW 4 (Macro Futures)
+col12, col13, col14, col15 = st.columns(4)
+
+col12.metric("HG (Copper)",f"{futures['HG']:.2f}" if not np.isnan(futures['HG']) else "-")
+col13.metric("ZN (10Y)",f"{futures['ZN']:.2f}" if not np.isnan(futures['ZN']) else "-")
+col14.metric("ZB (30Y)", f"{futures['ZB']:.2f}" if not np.isnan(futures['ZB']) else "-")
+col15.metric("DX (Dollar)", f"{futures['DX']:.2f}" if not np.isnan(futures['DX']) else "-")
 
 session = get_market_session()
 st.caption(f"Session: {session}")
@@ -1146,19 +1186,49 @@ if show_score: current_row += 1
 # -----------------------
 # PRICE
 # -----------------------
+
+rth_df = df[df["Session"] == "RTH"]
+pre_df = df[df["Session"] == "PREMARKET"]
+after_df = df[df["Session"] == "AFTERHOURS"]
+
 # Premarket-Candles (optional dünner / transparenter)
 pre_df = df[df["Session"]=="PREMARKET"]
 if not pre_df.empty:
+    if color_sessions:
+        # Premarket
+        fig.add_trace(go.Candlestick(
+            x=pre_df.index,
+            open=pre_df["Open"],
+            high=pre_df["High"],
+            low=pre_df["Low"],
+            close=pre_df["Close"],
+            name="Premarket",
+            increasing_line_color='lightblue',
+            decreasing_line_color='lightblue',
+            opacity=0.4
+        ), row=price_row, col=1)
+
+        # Afterhours
+        fig.add_trace(go.Candlestick(
+            x=after_df.index,
+            open=after_df["Open"],
+            high=after_df["High"],
+            low=after_df["Low"],
+            close=after_df["Close"],
+            name="Afterhours",
+            increasing_line_color='orange',
+            decreasing_line_color='orange',
+            opacity=0.4
+        ), row=price_row, col=1)
+
+    # RTH (Hauptchart)
     fig.add_trace(go.Candlestick(
-        x=pre_df.index,
-        open=pre_df["Open"],
-        high=pre_df["High"],
-        low=pre_df["Low"],
-        close=pre_df["Close"],
-        name="Premarket",
-        increasing_line_color='lightblue',
-        decreasing_line_color='lightcoral',
-        opacity=0.4
+        x=rth_df.index,
+        open=rth_df["Open"],
+        high=rth_df["High"],
+        low=rth_df["Low"],
+        close=rth_df["Close"],
+        name="RTH"
     ), row=price_row, col=1)
  
 if symbol_eu:
@@ -1168,15 +1238,29 @@ if symbol_eu:
         name=f"{symbol_eu} (EU)",
         line=dict(dash="dot", width=2)
     ), row=price_row, col=1)
-        
-fig.add_trace(go.Candlestick(
-    x=df.index,
-    open=df["Open"],
-    high=df["High"],
-    low=df["Low"],
-    close=df["Close"],
-    name="Price"
-), row=price_row, col=1)
+
+if show_rth_only_vwap:
+    fig.add_trace(go.Scatter(
+        x=rth_df.index,
+        y=rth_df["VWAP"],
+        name="VWAP (RTH)",
+        line=dict(width=3, color="yellow")
+    ), row=price_row, col=1)
+else:
+    # Separate VWAPs für jede Session
+    for session_name, session_df in {
+        "PRE": pre_df,
+        "RTH": rth_df,
+        "AH": after_df
+    }.items():
+        if not session_df.empty:
+            fig.add_trace(go.Scatter(
+                x=session_df.index,
+                y=session_df["VWAP"],
+                name=f"VWAP {session_name}",
+                line=dict(width=2, dash="dot")
+            ), row=price_row, col=1)
+
 
 fig.add_trace(go.Scatter(x=df.index,y=df["EMA20"],name="EMA20"),row=price_row,col=1)
 fig.add_trace(go.Scatter(x=df.index,y=df["EMA50"],name="EMA50"),row=price_row,col=1)
