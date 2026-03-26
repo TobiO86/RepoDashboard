@@ -974,16 +974,15 @@ if df_fast.empty or len(df_fast) < 2:
     st.warning("Keine Live-Daten verfügbar")
     st.stop()
 
-# 1️⃣ Letzter regulärer Schlusskurs (RTH)
-df_rth = df[df["Session"] == "RTH"]
-last_rth_close = df_rth["Close"].iloc[-1] if not df_rth.empty else df["Close"].iloc[-1]
+# 1️⃣ Letzter RTH Close (Last Price)
+last_rth_price = df[df["Session"] == "RTH"]["Close"].iloc[-1]
 
-# 2️⃣ Aktueller Pre/Post-Preis aus 1m-Daten
+# 2️⃣ Aktueller Preis (Premarket / Afterhours / letzte Kerze)
 current_price = df_fast["Close"].iloc[-1]
 
-# 3️⃣ Delta zum letzten RTH Close
-delta_price = current_price - last_rth_close
-delta_percent = (delta_price / last_rth_close) * 100 if last_rth_close != 0 else 0
+# 3️⃣ Delta vom Last Price zum aktuellen Preis
+delta_price = current_price - last_rth_price
+delta_percent = (delta_price / last_rth_price) * 100 if last_rth_price != 0 else 0
 
 # Optional: EU-Preis
 eu_price, eu_symbol = load_global_prices(symbol)
@@ -1036,22 +1035,19 @@ col1, col2, col3, col4 = st.columns(4)
 # 4️⃣ Metric
 col1.metric(
     label=f"{display_name} (RTH vs Current){eu_display}",
+    value=f"${last_rth_price:.2f}"
+)
+
+col2.metric(
+    label="Current Price",
     value=f"${current_price:.2f}",
     delta=f"{delta_price:+.2f} ({delta_percent:+.2f}%)"
 )
-col2.metric("VWAP", f"${vwap_last:.2f}")
+
+col3.metric("VWAP", f"${vwap_last:.2f}")
 
 rsi_last = df["RSI"].iloc[-1]
-col3.metric("RSI", f"{rsi_last:.2f}")
-
-# EU PRICE
-if not np.isnan(eu_price):
-    col4.metric(
-        f"{eu_symbol}",
-        f"${eu_price:.2f}"
-    )
-else:
-    col4.metric("EU", "-")
+col4.metric("RSI", f"{rsi_last:.2f}")
 
 # ROW 2 (Futures separat)
 col5, col6, col7 = st.columns(3)
