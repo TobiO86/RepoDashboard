@@ -178,7 +178,7 @@ def scan_market(limit=100):
             # LIGHT INDICATORS
             df["date"] = df.index.date
 
-            df["VWAP"] = (
+            df["VWAP_RTH"] = (
                 (df["Close"] * df["Volume"]).groupby(df["date"]).cumsum() /
                 df["Volume"].groupby(df["date"]).cumsum()
             )
@@ -188,7 +188,7 @@ def scan_market(limit=100):
             ema50 = df["Close"].ewm(span=50).mean()
 
             price = df["Close"].iloc[-1]
-            vwap = df["VWAP"].iloc[-1]
+            vwap = df["VWAP_RTH"].iloc[-1]
 
             delta = df["Close"].diff()
             gain = delta.clip(lower=0)
@@ -215,7 +215,7 @@ def scan_market(limit=100):
 
             # SIGNAL
             long_score = sum([
-                sweep_low, price > vwap, vol_spike, trend_bull, rsi > 60,
+                sweep_low, price > df["VWAP_RTH"], vol_spike, trend_bull, rsi > 60,
                 df["Close"].iloc[-1] > df["Close"].iloc[-3],
                 sweep_low and price > vwap  # boost
             ])
@@ -689,21 +689,47 @@ df["MACD_hist"] = df["MACD"] - df["MACD_signal"]
 
 df["date"] = df.index.date
 
-def compute_vwap(df):
+def compute_vwap_suite(df):
     df = df.copy()
 
     tp = (df["High"] + df["Low"] + df["Close"]) / 3
 
-    df["cum_vol"] = df["Volume"].cumsum()
-    df["cum_pv"] = (tp * df["Volume"]).cumsum()
+    # --- RTH VWAP ---
+    df["vol_rth"] = np.where(df["Session"] == "RTH", df["Volume"], 0)
+    df["pv_rth"] = tp * df["vol_rth"]
 
-    return df["cum_pv"] / df["cum_vol"]
+    df["cum_vol_rth"] = df.groupby(df.index.date)["vol_rth"].cumsum()
+    df["cum_pv_rth"] = df.groupby(df.index.date)["pv_rth"].cumsum()
+
+    df["VWAP_RTH"] = df["cum_pv_rth"] / df["cum_vol_rth"]
+
+    # --- PREMARKET VWAP ---
+    df["vol_pre"] = np.where(df["Session"] == "PREMARKET", df["Volume"], 0)
+    df["pv_pre"] = tp * df["vol_pre"]
+
+    df["cum_vol_pre"] = df.groupby(df.index.date)["vol_pre"].cumsum()
+    df["cum_pv_pre"] = df.groupby(df.index.date)["pv_pre"].cumsum()
+
+    df["VWAP_PRE"] = df["cum_pv_pre"] / df["cum_vol_pre"]
+
+    # --- AFTERHOURS VWAP ---
+    df["vol_ah"] = np.where(df["Session"] == "AFTERHOURS", df["Volume"], 0)
+    df["pv_ah"] = tp * df["vol_ah"]
+
+    df["cum_vol_ah"] = df.groupby(df.index.date)["vol_ah"].cumsum()
+    df["cum_pv_ah"] = df.groupby(df.index.date)["pv_ah"].cumsum()
+
+    df["VWAP_AH"] = df["cum_pv_ah"] / df["cum_vol_ah"]
+
+    return df
+
+df = compute_vwap_suite(df)
 
 typical_price = (df["High"] + df["Low"] + df["Close"]) / 3
-vwap_dev = (typical_price - df["VWAP"]).rolling(20).std()
+vwap_dev = (typical_price - df["VWAP_RTH"]).rolling(20).std()
 
-df["VWAP_upper2"] = df["VWAP"] + 2*vwap_dev
-df["VWAP_lower2"] = df["VWAP"] - 2*vwap_dev
+df["VWAP_upper2"] = df["VWAP_RTH"] + 2*vwap_dev
+df["VWAP_lower2"] = df["VWAP_RTH"] - 2*vwap_dev
 
 
 
@@ -721,7 +747,7 @@ if "BB_UPPER" not in df.columns:
     df["BB_LOWER"] = df["BB_MID"] - 2*df["BB_STD"]
     
     # Optional: NaN vermeiden bei VWAP und BB
-df["VWAP"].fillna(method="ffill", inplace=True)
+df["VWAP_RTH"].fillna(method="ffill", inplace=True)
 df["VWAP_upper2"].fillna(method="ffill", inplace=True)
 df["VWAP_lower2"].fillna(method="ffill", inplace=True)
 
@@ -757,6 +783,8 @@ df["SellNewsLong"] = False
 
 start = max(2, len(df) - 100)
 
+VWAP = "VWAP_RTH"
+
 for i in range(start, len(df)):
     prev = df.iloc[i-1]
     curr = df.iloc[i]
@@ -764,8 +792,8 @@ for i in range(start, len(df)):
     # SHORT: Fake Breakout nach oben → Reversal
     if (
         prev["sweep_high"] and
-        prev["Close"] > prev["VWAP"] and   # vorher stark
-        curr["Close"] < curr["VWAP"] and   # jetzt schwach
+        prev["Close"] > prev[VWAP] and   # vorher stark
+        curr["Close"] < curr[VWAP] and   # jetzt schwach
         curr["Close"] < prev["Close"]      # Momentum kippt
     ):
         df.at[df.index[i], "SellNewsShort"] = True
@@ -773,8 +801,8 @@ for i in range(start, len(df)):
     # LONG: Fake Breakdown → Reversal
     if (
         prev["sweep_low"] and
-        prev["Close"] < prev["VWAP"] and
-        curr["Close"] > curr["VWAP"] and
+        prev["Close"] < prev[VWAP] and
+        curr["Close"] > curr[VWAP] and
         curr["Close"] > prev["Close"]
     ):
         df.at[df.index[i], "SellNewsLong"] = True  
@@ -836,7 +864,7 @@ for i in range(start, len(df)):
     if df["SellNewsLong"].iloc[i]:
         score_long += weights["sellnews"]
 
-        df.at[df.index[i], "LongScore"] = score_long
+    df.at[df.index[i], "LongScore"] = round(score_long, 2)
 
     score_short = 0
 
@@ -1243,32 +1271,35 @@ if symbol_eu:
         line=dict(dash="dot", width=2)
     ), row=price_row, col=1)
 
-if show_rth_only_vwap:
+# RTH VWAP (dick)
+fig.add_trace(go.Scatter(
+    x=rth_df.index,
+    y=rth_df["VWAP_RTH"],
+    name="VWAP RTH",
+    line=dict(width=3, color="yellow")
+), row=price_row, col=1)
+
+# Premarket VWAP
+if not pre_df.empty:
     fig.add_trace(go.Scatter(
-        x=rth_df.index,
-        y=rth_df["VWAP"],
-        name="VWAP (RTH)",
-        line=dict(width=3, color="yellow")
+        x=pre_df.index,
+        y=pre_df["VWAP_PRE"],
+        name="VWAP PRE",
+        line=dict(width=2, dash="dot", color="lightblue")
     ), row=price_row, col=1)
-else:
-    # Separate VWAPs für jede Session
-    for session_name, session_df in {
-        "PRE": pre_df,
-        "RTH": rth_df,
-        "AH": after_df
-    }.items():
-        if not session_df.empty:
-            fig.add_trace(go.Scatter(
-                x=session_df.index,
-                y=session_df["VWAP"],
-                name=f"VWAP {session_name}",
-                line=dict(width=2, dash="dot")
-            ), row=price_row, col=1)
+
+# Afterhours VWAP
+if not after_df.empty:
+    fig.add_trace(go.Scatter(
+        x=after_df.index,
+        y=after_df["VWAP_AH"],
+        name="VWAP AH",
+        line=dict(width=2, dash="dot", color="orange")
+    ), row=price_row, col=1)
 
 
 fig.add_trace(go.Scatter(x=df.index,y=df["EMA20"],name="EMA20"),row=price_row,col=1)
 fig.add_trace(go.Scatter(x=df.index,y=df["EMA50"],name="EMA50"),row=price_row,col=1)
-fig.add_trace(go.Scatter(x=df.index,y=df["VWAP"],name="VWAP"),row=price_row,col=1)
 
 fig.add_trace(go.Scatter(x=df.index,y=df["VWAP_upper2"],name="VWAP +2"),row=price_row,col=1)
 fig.add_trace(go.Scatter(x=df.index,y=df["VWAP_lower2"],name="VWAP -2"),row=price_row,col=1)
