@@ -1270,14 +1270,40 @@ fig.add_trace(go.Candlestick(
 
 # VWAP Linien (optional)
 # RTH VWAP (dick) 
-if not rth_df.empty: 
-    fig.add_trace(go.Scatter( x=rth_df.index, y=rth_df["VWAP_RTH"], name="VWAP RTH", line=dict(width=3, color="yellow") ), row=price_row, col=1) 
-# Premarket VWAP 
-if not pre_df.empty: 
-    fig.add_trace(go.Scatter( x=pre_df.index, y=pre_df["VWAP_PRE"], name="VWAP PRE", line=dict(width=2, dash="dot", color="lightblue") ), row=price_row, col=1) 
+if not rth_df.empty and rth_df["VWAP_RTH"].notna().any():
+    fig.add_trace(
+        go.Scatter(
+            x=rth_df.index,
+            y=rth_df["VWAP_RTH"],
+            name="VWAP RTH",
+            line=dict(width=3, color="yellow")
+        ),
+        row=price_row,
+        col=1
+    )
+if not pre_df.empty and pre_df["VWAP_PRE"].notna().any():
+    fig.add_trace(
+        go.Scatter(
+            x=rth_df.index,
+            y=rth_df["VWAP_PRE"],
+            name="VWAP_PRE",
+            line=dict(width=3, color="yellow")
+        ),
+        row=price_row,
+        col=1
+    )     
 # Afterhours VWAP 
-if not ah_df.empty:
-    fig.add_trace(go.Scatter( x=ah_df.index, y=ah_df["VWAP_AH"], name="VWAP AH", line=dict(width=2, dash="dot", color="orange") ), row=price_row, col=1)
+if not ah_df.empty and ah_df["VWAP_AH"].notna().any():
+    fig.add_trace(
+        go.Scatter(
+            x=rth_df.index,
+            y=rth_df["VWAP_AH"],
+            name="VWAP_AH",
+            line=dict(width=3, color="yellow")
+        ),
+        row=price_row,
+        col=1
+    )    
 
 fig.add_trace(go.Scatter(x=df.index,y=df["EMA20"],name="EMA20"),row=price_row,col=1)
 fig.add_trace(go.Scatter(x=df.index,y=df["EMA50"],name="EMA50"),row=price_row,col=1)
