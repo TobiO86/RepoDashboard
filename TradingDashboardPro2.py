@@ -1272,7 +1272,8 @@ fig.add_trace(go.Candlestick(
 
 # VWAP Linien (optional)
 # RTH VWAP (dick) 
-fig.add_trace(go.Scatter( x=rth_df.index, y=rth_df["VWAP_RTH"], name="VWAP RTH", line=dict(width=3, color="yellow") ), row=price_row, col=1) 
+if not rth_df.empty: 
+    fig.add_trace(go.Scatter( x=rth_df.index, y=rth_df["VWAP_RTH"], name="VWAP RTH", line=dict(width=3, color="yellow") ), row=price_row, col=1) 
 # Premarket VWAP 
 if not pre_df.empty: 
     fig.add_trace(go.Scatter( x=pre_df.index, y=pre_df["VWAP_PRE"], name="VWAP PRE", line=dict(width=2, dash="dot", color="lightblue") ), row=price_row, col=1) 
