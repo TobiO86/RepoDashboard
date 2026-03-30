@@ -3,6 +3,7 @@ import yfinance as yf
 import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
+import plotly.graph_objects as go
 import numpy as np
 import requests
 import pytz
@@ -814,7 +815,8 @@ start = max(2, len(df) - 100)
 for i in range(start, len(df)):
     prev = df.iloc[i-1]
     curr = df.iloc[i]
-
+    vwap = get_vwap(curr)  # 🔥 HIER EINMAL setzen
+    
     score_long = 0
 
     weights = {
@@ -843,7 +845,6 @@ for i in range(start, len(df)):
         score_long += weights["sweep"]
 
     vwap = get_vwap(curr)
-
     if curr["Close"] > vwap:
         score_long += weights["vwap"]
 
@@ -887,7 +888,8 @@ for i in range(start, len(df)):
     # Core Faktoren
     if prev["sweep_high"]:
         score_short += weights["sweep"]
-
+        
+    vwap = get_vwap(curr)
     if curr["Close"] < vwap:
         score_short += weights["vwap"]
 
@@ -1224,84 +1226,59 @@ if show_score: current_row += 1
 # PRICE
 # -----------------------
 
+# --- Sessions ---
+# Subsets
 rth_df = df[df["Session"] == "RTH"]
 pre_df = df[df["Session"] == "PREMARKET"]
-after_df = df[df["Session"] == "AFTERHOURS"]
+ah_df  = df[df["Session"] == "AFTERHOURS"]
 
-# Premarket-Candles (optional dünner / transparenter)
-pre_df = df[df["Session"]=="PREMARKET"]
-if not pre_df.empty:
-    if color_sessions:
-        # Premarket
-        fig.add_trace(go.Candlestick(
-            x=pre_df.index,
-            open=pre_df["Open"],
-            high=pre_df["High"],
-            low=pre_df["Low"],
-            close=pre_df["Close"],
-            name="Premarket",
-            increasing_line_color='lightblue',
-            decreasing_line_color='lightblue',
-            opacity=0.4
-        ), row=price_row, col=1)
+fig = go.Figure()
 
-        # Afterhours
-        fig.add_trace(go.Candlestick(
-            x=after_df.index,
-            open=after_df["Open"],
-            high=after_df["High"],
-            low=after_df["Low"],
-            close=after_df["Close"],
-            name="Afterhours",
-            increasing_line_color='orange',
-            decreasing_line_color='orange',
-            opacity=0.4
-        ), row=price_row, col=1)
-
-    # RTH (Hauptchart)
-    fig.add_trace(go.Candlestick(
-        x=rth_df.index,
-        open=rth_df["Open"],
-        high=rth_df["High"],
-        low=rth_df["Low"],
-        close=rth_df["Close"],
-        name="RTH"
-    ), row=price_row, col=1)
- 
-if symbol_eu:
-    fig.add_trace(go.Scatter(
-        x=df.index,
-        y=df["EU_Close"],
-        name=f"{symbol_eu} (EU)",
-        line=dict(dash="dot", width=2)
-    ), row=price_row, col=1)
-
-# RTH VWAP (dick)
-fig.add_trace(go.Scatter(
+# RTH Candles – Standardfarben
+fig.add_trace(go.Candlestick(
     x=rth_df.index,
-    y=rth_df["VWAP_RTH"],
-    name="VWAP RTH",
-    line=dict(width=3, color="yellow")
-), row=price_row, col=1)
+    open=rth_df["Open"],
+    high=rth_df["High"],
+    low=rth_df["Low"],
+    close=rth_df["Close"],
+    name="RTH",
+    increasing_line_color='green',
+    decreasing_line_color='red'
+))
 
-# Premarket VWAP
-if not pre_df.empty:
-    fig.add_trace(go.Scatter(
-        x=pre_df.index,
-        y=pre_df["VWAP_PRE"],
-        name="VWAP PRE",
-        line=dict(width=2, dash="dot", color="lightblue")
-    ), row=price_row, col=1)
+# PREMARKET Candles – leicht transparent
+fig.add_trace(go.Candlestick(
+    x=pre_df.index,
+    open=pre_df["Open"],
+    high=pre_df["High"],
+    low=pre_df["Low"],
+    close=pre_df["Close"],
+    name="PRE",
+    increasing_line_color='lightgreen',
+    decreasing_line_color='lightcoral',
+    opacity=0.5
+))
 
-# Afterhours VWAP
-if not after_df.empty:
-    fig.add_trace(go.Scatter(
-        x=after_df.index,
-        y=after_df["VWAP_AH"],
-        name="VWAP AH",
-        line=dict(width=2, dash="dot", color="orange")
-    ), row=price_row, col=1)
+# AFTERHOURS Candles – leicht transparent
+fig.add_trace(go.Candlestick(
+    x=ah_df.index,
+    open=ah_df["Open"],
+    high=ah_df["High"],
+    low=ah_df["Low"],
+    close=ah_df["Close"],
+    name="AH",
+    increasing_line_color='lightblue',
+    decreasing_line_color='lightsalmon',
+    opacity=0.5
+))
 
+# VWAP Linien (optional)
+fig.add_trace(go.Scatter(x=df.index, y=df["VWAP_RTH"], mode="lines", name="VWAP RTH", line=dict(color="blue")))
+fig.add_trace(go.Scatter(x=df.index, y=df["VWAP_PRE"], mode="lines", name="VWAP PRE", line=dict(color="green", dash="dot")))
+fig.add_trace(go.Scatter(x=df.index, y=df["VWAP_AH"], mode="lines", name="VWAP AH", line=dict(color="red", dash="dot")))
+
+fig.update_layout(title=f"{symbol} Price Chart", xaxis_rangeslider_visible=False)
+st.plotly_chart(fig, use_container_width=True)
 
 fig.add_trace(go.Scatter(x=df.index,y=df["EMA20"],name="EMA20"),row=price_row,col=1)
 fig.add_trace(go.Scatter(x=df.index,y=df["EMA50"],name="EMA50"),row=price_row,col=1)
