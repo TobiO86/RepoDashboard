@@ -1276,9 +1276,6 @@ fig.add_trace(go.Scatter(x=df.index, y=df["VWAP_RTH"], mode="lines", name="VWAP 
 fig.add_trace(go.Scatter(x=df.index, y=df["VWAP_PRE"], mode="lines", name="VWAP PRE", line=dict(color="green", dash="dot")))
 fig.add_trace(go.Scatter(x=df.index, y=df["VWAP_AH"], mode="lines", name="VWAP AH", line=dict(color="red", dash="dot")))
 
-fig.update_layout(title=f"{symbol} Price Chart", xaxis_rangeslider_visible=False)
-st.plotly_chart(fig, use_container_width=True)
-
 fig.add_trace(go.Scatter(x=df.index,y=df["EMA20"],name="EMA20"),row=price_row,col=1)
 fig.add_trace(go.Scatter(x=df.index,y=df["EMA50"],name="EMA50"),row=price_row,col=1)
 
