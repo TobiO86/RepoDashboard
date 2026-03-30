@@ -239,13 +239,21 @@ def render_list(title, stocks):
         return
 
     for i, s in enumerate(stocks):
-        ticker = s["symbol"]
+        if not isinstance(s, dict):
+            continue
 
-        label = f"{ticker} | {s['setup']} | ⭐{s['score']} Δ{s['delta']}"
+        ticker = s.get("symbol")
+        setup = s.get("setup", "-")
+        score = s.get("score", "-")
+        delta = s.get("delta", "-")
+
+        if not ticker:
+            continue
+
+        label = f"{ticker} | {setup} | ⭐{score} Δ{delta}"
 
         if st.sidebar.button(label, key=f"{title}_{i}_{ticker}"):
             st.session_state.symbol = ticker
-
 
 with st.sidebar.expander("🔥 Scanner PRO MAX", expanded=False):
     
