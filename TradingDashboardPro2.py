@@ -1230,8 +1230,6 @@ rth_df = df[df["Session"] == "RTH"]
 pre_df = df[df["Session"] == "PREMARKET"]
 ah_df  = df[df["Session"] == "AFTERHOURS"]
 
-fig = go.Figure()
-
 # RTH Candles – Standardfarben
 fig.add_trace(go.Candlestick(
     x=rth_df.index,
