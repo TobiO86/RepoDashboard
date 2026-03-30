@@ -1279,8 +1279,6 @@ if not rth_df.empty and rth_df["VWAP_RTH"].notna().any():
             name="VWAP_RTH",
             line=dict(width=3, color="yellow")
         ),
-        row=price_row,
-        col=1
     )
 if not pre_df.empty and pre_df["VWAP_PRE"].notna().any():
     fig.add_trace(
@@ -1290,8 +1288,6 @@ if not pre_df.empty and pre_df["VWAP_PRE"].notna().any():
             name="VWAP_PRE",
             line=dict(width=3, color="yellow")
         ),
-        row=price_row,
-        col=1
     )     
 # Afterhours VWAP 
 if not ah_df.empty and ah_df["VWAP_AH"].notna().any():
@@ -1302,8 +1298,6 @@ if not ah_df.empty and ah_df["VWAP_AH"].notna().any():
             name="VWAP_AH",
             line=dict(width=3, color="yellow")
         ),
-        row=price_row,
-        col=1
     )    
 
 fig.add_trace(go.Scatter(x=df.index,y=df["EMA20"],name="EMA20"),row=price_row,col=1)
