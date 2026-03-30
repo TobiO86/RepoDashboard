@@ -1204,21 +1204,12 @@ fig = make_subplots(
     subplot_titles=titles
 )
 
-current_row = 1
-price_row = current_row
-current_row += 1
-
-volume_row = current_row if show_volume else None
-if show_volume: current_row += 1
-
-rsi_row = current_row if show_rsi else None
-if show_rsi: current_row += 1
-
-macd_row = current_row if show_macd else None
-if show_macd: current_row += 1
-
-score_row = current_row if show_score else None
-if show_score: current_row += 1
+price_row = 1
+volume_row = 2 if show_volume else None
+score_row = 3 if show_score else None
+rsi_row = 4 if show_rsi else None
+macd_row = 5 if show_macd else None
+timeline_row = 5  # letzte Zeile
 
 
 # -----------------------
