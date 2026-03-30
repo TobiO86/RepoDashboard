@@ -1097,7 +1097,7 @@ col14.metric("ZB (30Y)", f"{futures.get('ZB', np.nan):.2f}" if not np.isnan(futu
 col15.metric("DX (Dollar)", f"{futures.get('DX', np.nan):.2f}" if not np.isnan(futures.get('DX', np.nan)) else "-")
 
 
-st.caption(f"Session: {session}")
+st.caption(f"Session: {SESSION}")
 
 # -----------------------
 # SUPPORT / RESISTANCE
