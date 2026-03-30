@@ -815,7 +815,6 @@ start = max(2, len(df) - 100)
 for i in range(start, len(df)):
     prev = df.iloc[i-1]
     curr = df.iloc[i]
-    vwap = get_vwap(curr)  # 🔥 HIER EINMAL setzen
     
     score_long = 0
 
@@ -839,7 +838,7 @@ for i in range(start, len(df)):
             return curr["VWAP_AH"]
         else:
             return curr["Close"]  # fallback
-
+    
     # Core Faktoren
     if prev["sweep_low"]:
         score_long += weights["sweep"]
