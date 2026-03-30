@@ -1195,6 +1195,15 @@ titles = ["Price", "Volume", "Score", "Indicator", "Timeline"]
 # Timeline row ist die letzte
 timeline_row = rows
 
+fig = make_subplots(
+    rows=rows,
+    cols=1,
+    shared_xaxes=True,
+    vertical_spacing=0.03,
+    row_heights=row_heights,
+    subplot_titles=titles
+)
+
 current_row = 1
 price_row = current_row
 current_row += 1
@@ -1211,14 +1220,6 @@ if show_macd: current_row += 1
 score_row = current_row if show_score else None
 if show_score: current_row += 1
 
-fig = make_subplots(
-    rows=rows,
-    cols=1,
-    shared_xaxes=True,
-    vertical_spacing=0.03,
-    row_heights=row_heights,
-    subplot_titles=titles
-)
 
 # -----------------------
 # PRICE
@@ -1226,9 +1227,9 @@ fig = make_subplots(
 
 # --- Sessions ---
 # Subsets
-rth_df = df[df[SESSION] == "RTH"]
-pre_df = df[df[SESSION] == "PREMARKET"]
-ah_df  = df[df[SESSION] == "AFTERHOURS"]
+rth_df = df[df["Session"] == "RTH"]
+pre_df = df[df["Session"] == "PREMARKET"]
+ah_df  = df[df["Session"] == "AFTERHOURS"]
 
 # RTH Candles – Standardfarben
 fig.add_trace(go.Candlestick(
