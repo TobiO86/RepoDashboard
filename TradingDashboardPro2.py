@@ -1276,7 +1276,7 @@ if not rth_df.empty and rth_df["VWAP_RTH"].notna().any():
         go.Scatter(
             x=rth_df.index,
             y=rth_df["VWAP_RTH"],
-            name="VWAP RTH",
+            name="VWAP_RTH",
             line=dict(width=3, color="yellow")
         ),
         row=price_row,
