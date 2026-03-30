@@ -3,7 +3,6 @@ import yfinance as yf
 import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
-import plotly.graph_objects as go
 import numpy as np
 import requests
 import pytz
@@ -1272,9 +1271,9 @@ fig.add_trace(go.Candlestick(
 ))
 
 # VWAP Linien (optional)
-fig.add_trace(go.Scatter(x=df.index, y=df["VWAP_RTH"], mode="lines", name="VWAP RTH", line=dict(color="blue")))
-fig.add_trace(go.Scatter(x=df.index, y=df["VWAP_PRE"], mode="lines", name="VWAP PRE", line=dict(color="green", dash="dot")))
-fig.add_trace(go.Scatter(x=df.index, y=df["VWAP_AH"], mode="lines", name="VWAP AH", line=dict(color="red", dash="dot")))
+fig.add_trace(go.Scatter(x=df.index, y=df["VWAP_RTH"], mode="lines", name="VWAP RTH", line=dict(color="blue"),row=price_row,col=1))
+fig.add_trace(go.Scatter(x=df.index, y=df["VWAP_PRE"], mode="lines", name="VWAP PRE", line=dict(color="green", dash="dot"),row=price_row,col=1))
+fig.add_trace(go.Scatter(x=df.index, y=df["VWAP_AH"], mode="lines", name="VWAP AH", line=dict(color="red", dash="dot"),row=price_row,col=1))
 
 fig.add_trace(go.Scatter(x=df.index,y=df["EMA20"],name="EMA20"),row=price_row,col=1)
 fig.add_trace(go.Scatter(x=df.index,y=df["EMA50"],name="EMA50"),row=price_row,col=1)
