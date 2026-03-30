@@ -37,6 +37,7 @@ def get_market_session():
 
  
 st.set_page_config(layout="wide")  # 👈 ganz oben!
+SESSION = get_market_session()
 
 if "symbol" not in st.session_state:
     st.session_state.symbol = "BTC-USD"
@@ -116,26 +117,20 @@ def get_sp500_symbols():
 
     ]
 
-def filter_symbols_by_session(symbols):
-    session = get_market_session()
-
+def filter_symbols_by_session(symbols, session):
     if session == "RTH":
-        symbols = symbols[:100]   # volle Power nur im Markt
+        symbols = symbols[:100]
     else:
-        symbols = symbols[:30]    # off-hours = weniger nötig
+        symbols = symbols[:30]
 
     if session == "WEEKEND":
         return [s for s in symbols if "=F" in s or "USD" in s]
-
-    elif session in ["PREMARKET", "AFTERHOURS"]:
-        # optional: weniger Noise
-        return symbols  # oder nur High Beta / Futures
 
     return symbols
 
 @st.cache_data(ttl=180)
 def scan_market(limit=100):
-    symbols = filter_symbols_by_session(get_sp500_symbols())[:limit]
+    symbols = filter_symbols_by_session(get_sp500_symbols(), SESSION)[:limit]
     results = []
 
     data_all = {}
@@ -167,6 +162,35 @@ def scan_market(limit=100):
             ema50 = df["Close"].ewm(span=50).mean()
 
             price = df["Close"].iloc[-1]
+
+            # --- Liquidity ---
+            avg_vol = df["Volume"].rolling(20).mean().iloc[-1]
+            dollar_vol = price * avg_vol
+
+            if dollar_vol < 10_000_000:
+                continue
+
+            # --- Volatility (ATR) ---
+            tr = np.maximum(
+                df["High"] - df["Low"],
+                np.maximum(
+                    abs(df["High"] - df["Close"].shift(1)),
+                    abs(df["Low"] - df["Close"].shift(1))
+                )
+            )
+
+            atr = tr.rolling(14).mean().iloc[-1]
+            atr_pct = atr / price
+
+            if atr_pct < 0.005:
+                continue
+
+            # --- Relative Volume ---
+            rel_vol = df["Volume"].iloc[-1] / avg_vol
+
+            if rel_vol < 1.3:
+                continue
+            
             vwap = df["VWAP_RTH"].iloc[-1]
 
             delta = df["Close"].diff()
@@ -268,13 +292,13 @@ live_mode = st.sidebar.checkbox("⚡ Live Mode (RTH only)", True)
 show_rth_only_vwap = st.sidebar.checkbox("VWAP nur RTH", True)
 color_sessions = st.sidebar.checkbox("Sessions farbig", True)
 
-session = get_market_session()
+
 
 if live_mode:
-    if session == "WEEKEND":
+    if SESSION == "WEEKEND":
         st.caption("Weekend Mode: nur Crypto + Futures")
-    elif session != "RTH":
-        st.caption(f"Off-hours: {session}")
+    elif SESSION != "RTH":
+        st.caption(f"Off-hours: {SESSION}")
 
 gainers, losers = scan_market(limit)
 
@@ -1072,7 +1096,7 @@ col13.metric("ZN (10Y)",f"{futures.get('ZN', np.nan):.2f}" if not np.isnan(futur
 col14.metric("ZB (30Y)", f"{futures.get('ZB', np.nan):.2f}" if not np.isnan(futures.get('ZB', np.nan)) else "-")
 col15.metric("DX (Dollar)", f"{futures.get('DX', np.nan):.2f}" if not np.isnan(futures.get('DX', np.nan)) else "-")
 
-session = get_market_session()
+
 st.caption(f"Session: {session}")
 
 # -----------------------
