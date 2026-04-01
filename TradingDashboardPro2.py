@@ -384,9 +384,21 @@ st.sidebar.caption(f"Aktive Kombi: {interval} / {period}")
 # -----------------------
 @st.cache_data(ttl=5)
 def load_fast_price(symbol):
-    import yfinance as yf
-    # threads=False verhindert Multithreading-Fehler in Streamlit
-    df = yf.download(symbol, period="1d", interval="1m", progress=False, threads=False)
+    try:
+        df = yf.download(symbol, period="1d", interval="1m", progress=False, threads=False)
+    except:
+        return pd.DataFrame()
+
+    if df.empty or "Close" not in df.columns:
+        return pd.DataFrame()
+
+    # MultiIndex auflösen (falls vorhanden)
+    if isinstance(df.columns, pd.MultiIndex):
+        df.columns = df.columns.get_level_values(0)
+
+    # Leere oder ungültige Zeilen entfernen
+    df = df.dropna(subset=["Close"])
+
     return df
 
 @st.cache_data(ttl=10)
