@@ -917,7 +917,8 @@ for i in range(start, len(df)):
     # Sell the news Reversal
     if df["SellNewsLong"].iloc[i]:
         score_long += weights["sellnews"]
-
+        
+    df["LongScore"] = df["LongScore"].astype(float)
     df.at[df.index[i], "LongScore"] = round(score_long, 2)
 
     score_short = 0
@@ -964,7 +965,7 @@ for i in range(start, len(df)):
         score_short += weights["sellnews"]
 
     df["ShortScore"] = df["ShortScore"].astype(float)
-    df["LongScore"] = df["LongScore"].astype(float)
+
     # Optional: runden
     df.at[df.index[i], "ShortScore"] = round(score_short, 2)
 
