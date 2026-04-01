@@ -610,7 +610,7 @@ if df.empty:
 
 # 3️⃣ Premarket markieren
 df = mark_premarket(df)
-df["EU_Close"] = df["EU_Close"].ffill()
+df["EU_Close"] = df["EU_Close"].fillna(method="ffill")
 df["Spread"] = df["Spread"].fillna(0)
 
 if len(df) == 0:
@@ -741,19 +741,13 @@ if "BB_UPPER" not in df.columns:
     df["BB_LOWER"] = df["BB_MID"] - 2*df["BB_STD"]
     
     # Optional: NaN vermeiden bei VWAP und BB
-df = df.copy()
-df["VWAP_RTH"] = df["VWAP_RTH"].ffill()
-df = df.copy()
-df["VWAP_upper2"] = df["VWAP_upper2"].ffill()
-df = df.copy()
-df["VWAP_lower2"] = df["VWAP_lower2"].ffill()
+df["VWAP_RTH"].fillna(method="ffill", inplace=True)
+df["VWAP_upper2"].fillna(method="ffill", inplace=True)
+df["VWAP_lower2"].fillna(method="ffill", inplace=True)
 
-df = df.copy()
-df["BB_UPPER"] = df["BB_UPPER"].ffill()
-df = df.copy()
-df["BB_LOWER"] = df["BB_LOWER"].ffill()
-df = df.copy()
-df["BB_MID"] = df["BB_MID"].ffill()
+df["BB_UPPER"].fillna(method="ffill", inplace=True)
+df["BB_LOWER"].fillna(method="ffill", inplace=True)
+df["BB_MID"].fillna(method="ffill", inplace=True)
 
 # Bollinger Squeeze
 df["BB_WIDTH"] = df["BB_UPPER"] - df["BB_LOWER"]
@@ -763,6 +757,30 @@ df["BB_WIDTH"] = df["BB_UPPER"] - df["BB_LOWER"]
 
 df["delta"] = np.where(df["Close"] > df["Open"], df["Volume"], -df["Volume"])
 df["cum_delta"] = df["delta"].cumsum()
+
+# -----------------------
+# MARKET REGIME
+# -----------------------
+
+def detect_market_regime(df):
+    vwap = df["VWAP_RTH"]
+    price = df["Close"]
+
+    # VWAP Cross Count
+    crosses = ((price > vwap) != (price.shift(1) > vwap.shift(1))).rolling(20).sum()
+
+    # Trend Stärke (EMA Spread)
+    ema20 = df["EMA20"]
+    ema50 = df["EMA50"]
+    trend_strength = abs(ema20 - ema50) / price
+
+    # Range vs Trend
+    if crosses.iloc[-1] > 3 and trend_strength.iloc[-1] < 0.002:
+        return "RANGE"
+    else:
+        return "TREND"
+
+df["MarketRegime"] = detect_market_regime(df)
 
 # -----------------------
 # SELL THE NEWS DETECTOR
@@ -805,6 +823,8 @@ for i in range(start, len(df)):
         curr["Close"] > prev["Close"]
     ):
         df.at[df.index[i], "SellNewsLong"] = True  
+        
+
 
 # -----------------------
 # SMART MONEY (FIXED)
@@ -816,6 +836,21 @@ df["ShortScore"] = 0
 vol_avg = df["Volume"].rolling(20).mean()
 
 start = max(2, len(df) - 100)
+
+df["VWAP_Reclaim_Long"] = (
+    (df["Close"].shift(1) < df["VWAP_RTH"].shift(1)) &
+    (df["Close"] > df["VWAP_RTH"])
+)
+
+df["VWAP_Reclaim_Short"] = (
+    (df["Close"].shift(1) > df["VWAP_RTH"].shift(1)) &
+    (df["Close"] < df["VWAP_RTH"])
+)     
+df["VWAP_Extreme_High"] = df["Close"] > df["VWAP_upper2"]
+df["VWAP_Extreme_Low"]  = df["Close"] < df["VWAP_lower2"]
+
+df["HH"] = df["High"] > df["High"].shift(1)
+df["LL"] = df["Low"] < df["Low"].shift(1)
 
 for i in range(start, len(df)):
     prev = df.iloc[i-1]
@@ -833,7 +868,7 @@ for i in range(start, len(df)):
         "mtf": 1.5,
         "sellnews": 2
     }
-
+    
     def get_vwap(curr):
         if curr["Session"] == "RTH":
             return curr["VWAP_RTH"]
@@ -874,7 +909,7 @@ for i in range(start, len(df)):
     if df["SellNewsLong"].iloc[i]:
         score_long += weights["sellnews"]
 
-    df["LongScore"] = pd.Series(index=df.index, dtype="float64")
+    df.at[df.index[i], "LongScore"] = round(score_long, 2)
 
     score_short = 0
 
@@ -920,8 +955,72 @@ for i in range(start, len(df)):
         score_short += weights["sellnews"]
 
     # Optional: runden
-    df["ShortScore"] = pd.Series(index=df.index, dtype="float64")
+    df.at[df.index[i], "ShortScore"] = round(score_short, 2)
 
+    regime = df["MarketRegime"]
+
+    # Mean Reversion Boost
+    if regime.iloc[i] == "RANGE":
+        if curr["Close"] > curr["VWAP_upper2"]:
+            score_short += 2
+        if curr["Close"] < curr["VWAP_lower2"]:
+            score_long += 2
+
+    # Trend Boost
+    if regime.iloc[i] == "TREND":
+        if curr["Close"] > vwap:
+            score_long += 1
+        if curr["Close"] < vwap:
+            score_short += 1
+            
+    if df["VWAP_Reclaim_Long"].iloc[i]:
+        score_long += 2
+
+    if df["VWAP_Reclaim_Short"].iloc[i]:
+        score_short += 2            
+            
+    if curr["VWAP_Extreme_Low"]:
+        score_long += 2
+
+    if curr["VWAP_Extreme_High"]:
+        score_short += 2      
+        
+    if curr["HH"]:
+        score_long += 1
+
+    if curr["LL"]:
+        score_short += 1
+        
+    if (
+        df["LongScore"].iloc[i] >= 6 and
+        df["MarketRegime"].iloc[i] == "TREND"
+    ):
+        df.at[df.index[i], "LongSignal"] = True
+
+    elif (
+        df["ShortScore"].iloc[i] >= 6 and
+        df["MarketRegime"].iloc[i] == "TREND"
+    ):
+        df.at[df.index[i], "ShortSignal"] = True
+
+    # RANGE MODE
+    elif (
+        df["LongScore"].iloc[i] >= 5 and
+        df["MarketRegime"].iloc[i] == "RANGE"
+    ):
+        df.at[df.index[i], "LongSignal"] = True
+
+    elif (
+        df["ShortScore"].iloc[i] >= 5 and
+        df["MarketRegime"].iloc[i] == "RANGE"
+    ):
+        df.at[df.index[i], "ShortSignal"] = True 
+        
+        # Normalize auf 0–10
+    df.at[df.index[i], "LongScore"] = min(score_long, 10)
+    df.at[df.index[i], "ShortScore"] = min(score_short, 10)  
+    
+     
 # -----------------------
 # HIGH PROBABILITY FILTER
 # -----------------------
@@ -1131,7 +1230,7 @@ def clean_levels(levels,threshold=0.002):
 
 df = df.replace([np.inf, -np.inf], np.nan)
 
-df = df.bfill().ffill()
+df = df.fillna(method="bfill").fillna(method="ffill")
 
 if len(df) < 50:
     st.warning("Zu wenig Daten")
