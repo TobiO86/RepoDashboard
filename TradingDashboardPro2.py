@@ -920,7 +920,7 @@ for i in range(start, len(df)):
         score_short += weights["sellnews"]
 
     # Optional: runden
-    df.at[df.index[i], "ShortScore"] = round(score_short, 2)
+    df["ShortScore"] = pd.Series(index=df.index, dtype="float64")
 
 # -----------------------
 # HIGH PROBABILITY FILTER
