@@ -610,7 +610,7 @@ if df.empty:
 
 # 3️⃣ Premarket markieren
 df = mark_premarket(df)
-df["EU_Close"] = df["EU_Close"].fillna(method="ffill")
+df["EU_Close"] = df["EU_Close"].ffill().bfill()
 df["Spread"] = df["Spread"].fillna(0)
 
 if len(df) == 0:
