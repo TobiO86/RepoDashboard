@@ -874,11 +874,7 @@ for i in range(start, len(df)):
     if df["SellNewsLong"].iloc[i]:
         score_long += weights["sellnews"]
 
-    df["LongScore"] = df["LongScore"].astype("float64")
-    df["LongScore"] = df["LongScore"].fillna(0)
-
-    # Beispiel: direkt berechnen statt .at im Loop
-    df["LongScore"] = df["some_signal"] * 0.5 + df["other_signal"] * 0.5
+    df["LongScore"] = pd.Series(index=df.index, dtype="float64")
 
     score_short = 0
 
