@@ -963,6 +963,8 @@ for i in range(start, len(df)):
     if df["SellNewsShort"].iloc[i]:
         score_short += weights["sellnews"]
 
+    df["ShortScore"] = df["ShortScore"].astype(float)
+    df["LongScore"] = df["LongScore"].astype(float)
     # Optional: runden
     df.at[df.index[i], "ShortScore"] = round(score_short, 2)
 
