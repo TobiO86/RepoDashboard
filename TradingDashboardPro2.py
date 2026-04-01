@@ -741,7 +741,8 @@ if "BB_UPPER" not in df.columns:
     df["BB_LOWER"] = df["BB_MID"] - 2*df["BB_STD"]
     
     # Optional: NaN vermeiden bei VWAP und BB
-df["VWAP_RTH"].fillna(method="ffill", inplace=True)
+df = df.copy()
+df["VWAP_RTH"] = df["VWAP_RTH"].ffill()
 df["VWAP_upper2"].fillna(method="ffill", inplace=True)
 df["VWAP_lower2"].fillna(method="ffill", inplace=True)
 
