@@ -607,11 +607,18 @@ if df.empty:
 
 # 3️⃣ Premarket markieren
 df = mark_premarket(df)
+# Sicherstellen, dass Spalte existiert
 if "EU_Close" not in df.columns:
     df["EU_Close"] = np.nan
 
-df["EU_Close"] = df["EU_Close"].fillna(method="ffill")
-df["Spread"] = df["Spread"].fillna(0)
+# Forward-Fill nur, wenn es echte Werte gibt
+if df["EU_Close"].notna().any():
+    df["EU_Close"] = df["EU_Close"].fillna(method="ffill")
+else:
+    df["EU_Close"] = np.nan
+
+# Spread berechnen (Fallback 0)
+df["Spread"] = df["Close"] - df["EU_Close"].fillna(df["Close"])
 
 if len(df) == 0:
     st.stop()
