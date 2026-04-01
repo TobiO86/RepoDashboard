@@ -1242,7 +1242,8 @@ def clean_levels(levels,threshold=0.002):
 
 df = df.replace([np.inf, -np.inf], np.nan)
 
-df = df.fillna(method="bfill").fillna(method="ffill")
+# Variante 1: direkt auf df
+df = df.bfill().ffill()
 
 if len(df) < 50:
     st.warning("Zu wenig Daten")
