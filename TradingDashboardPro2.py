@@ -384,17 +384,8 @@ st.sidebar.caption(f"Aktive Kombi: {interval} / {period}")
 # -----------------------
 @st.cache_data(ttl=5)
 def load_fast_price(symbol):
-    df = yf.download(symbol, period="1d", interval="1m", progress=False)
-
-    if df.empty or "Close" not in df:
-        return pd.DataFrame()
-
-    df = df.dropna()
-
-    if isinstance(df.columns, pd.MultiIndex):
-        df.columns = df.columns.get_level_values(0)
-
-    return df
+    # disable threading (run synchronously)
+    return yf.download(symbol, period="1d", interval="1m", progress=False, threads=False)
 
 @st.cache_data(ttl=10)
 def load_global_prices(symbol):
