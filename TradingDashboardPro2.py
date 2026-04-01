@@ -752,9 +752,9 @@ vwap_bb_cols = ["VWAP_RTH", "VWAP_upper2", "VWAP_lower2", "BB_UPPER", "BB_LOWER"
 for col in vwap_bb_cols:
     if col not in df.columns:
         df[col] = np.nan
-    # nur forward-fill, wenn mind. 1 gültiger Wert vorhanden
+    # Forward-Fill nur, wenn mind. 1 gültiger Wert existiert
     if df[col].notna().any():
-        df[col].fillna(method="ffill", inplace=True)
+        df[col] = df[col].ffill()
     else:
         df[col] = np.nan
 
