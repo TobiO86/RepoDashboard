@@ -384,8 +384,10 @@ st.sidebar.caption(f"Aktive Kombi: {interval} / {period}")
 # -----------------------
 @st.cache_data(ttl=5)
 def load_fast_price(symbol):
-    # disable threading (run synchronously)
-    return yf.download(symbol, period="1d", interval="1m", progress=False, threads=False)
+    import yfinance as yf
+    # threads=False verhindert Multithreading-Fehler in Streamlit
+    df = yf.download(symbol, period="1d", interval="1m", progress=False, threads=False)
+    return df
 
 @st.cache_data(ttl=10)
 def load_global_prices(symbol):
