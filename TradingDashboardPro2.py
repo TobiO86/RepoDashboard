@@ -577,10 +577,7 @@ def load_multi_exchange(symbol, period, interval):
     except:
         pass
 
-    # Align
-    df_us["EU_Close"] = df_eu["Close"].reindex(df_us.index, method="ffill")
-
-    # Spread
+    df_us["EU_Close"] = df_eu["Close"].reindex(df_us.index, method="ffill") if symbol_eu else np.nan
     df_us["Spread"] = df_us["Close"] - df_us["EU_Close"]
 
     return df_us, symbol_eu
@@ -610,6 +607,9 @@ if df.empty:
 
 # 3️⃣ Premarket markieren
 df = mark_premarket(df)
+if "EU_Close" not in df.columns:
+    df["EU_Close"] = np.nan
+
 df["EU_Close"] = df["EU_Close"].fillna(method="ffill")
 df["Spread"] = df["Spread"].fillna(0)
 
