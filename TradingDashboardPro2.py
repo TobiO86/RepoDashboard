@@ -743,12 +743,17 @@ if "BB_UPPER" not in df.columns:
     # Optional: NaN vermeiden bei VWAP und BB
 df = df.copy()
 df["VWAP_RTH"] = df["VWAP_RTH"].ffill()
-df["VWAP_upper2"].fillna(method="ffill", inplace=True)
-df["VWAP_lower2"].fillna(method="ffill", inplace=True)
+df = df.copy()
+df["VWAP_upper2"] = df["VWAP_upper2"].ffill()
+df = df.copy()
+df["VWAP_lower2"] = df["VWAP_lower2"].ffill()
 
-df["BB_UPPER"].fillna(method="ffill", inplace=True)
-df["BB_LOWER"].fillna(method="ffill", inplace=True)
-df["BB_MID"].fillna(method="ffill", inplace=True)
+df = df.copy()
+df["BB_UPPER"] = df["BB_UPPER"].ffill()
+df = df.copy()
+df["BB_LOWER"] = df["BB_LOWER"].ffill()
+df = df.copy()
+df["BB_MID"] = df["BB_MID"].ffill()
 
 # Bollinger Squeeze
 df["BB_WIDTH"] = df["BB_UPPER"] - df["BB_LOWER"]
