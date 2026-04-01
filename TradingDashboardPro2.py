@@ -747,21 +747,16 @@ if "BB_UPPER" not in df.columns:
     df["BB_UPPER"] = df["BB_MID"] + 2*df["BB_STD"]
     df["BB_LOWER"] = df["BB_MID"] - 2*df["BB_STD"]
     
-    # Optional: NaN vermeiden bei VWAP und BB
-# Sicherstellen, dass VWAP_RTH existiert
-if "VWAP_RTH" not in df.columns:
-    df["VWAP_RTH"] = np.nan
+vwap_bb_cols = ["VWAP_RTH", "VWAP_upper2", "VWAP_lower2", "BB_UPPER", "BB_LOWER", "BB_MID"]
 
-# Forward-Fill nur, wenn es echte Werte gibt
-if df["VWAP_RTH"].notna().any():
-    df["VWAP_RTH"].fillna(method="ffill", inplace=True)
-else:
-    df["VWAP_RTH"] = np.nan
-for col in ["VWAP_upper2", "VWAP_lower2", "BB_UPPER", "BB_LOWER", "BB_MID"]:
+for col in vwap_bb_cols:
     if col not in df.columns:
         df[col] = np.nan
+    # nur forward-fill, wenn mind. 1 gültiger Wert vorhanden
     if df[col].notna().any():
         df[col].fillna(method="ffill", inplace=True)
+    else:
+        df[col] = np.nan
 
 # Bollinger Squeeze
 df["BB_WIDTH"] = df["BB_UPPER"] - df["BB_LOWER"]
