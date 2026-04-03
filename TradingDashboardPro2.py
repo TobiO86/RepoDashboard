@@ -9,10 +9,10 @@ import pytz
 from datetime import datetime, time
 from streamlit_autorefresh import st_autorefresh
 import pytz
+
 # -----------------------
 # AUTO REFRESH (NUR TOP DATEN)
 # -----------------------
-
 def get_market_session():
     et = pytz.timezone("US/Eastern")
     now = datetime.now(et)
@@ -106,7 +106,7 @@ def get_sp500_symbols():
         # -----------------------
         # CRYPTO
         # -----------------------
-        "BTC-USD","ETH-USD","SOL-USD","XRP_USD","ADA_USD"
+        "BTC-USD","ETH-USD","SOL-USD","XRP_USD","ADA_USD","DOGE"
 
     ]
 
@@ -172,6 +172,7 @@ def scan_market(limit=100):
             df["VWAP_RTH"] = (df["Close"] * df["Volume"]).groupby(df.index.date).cumsum() / df["Volume"].groupby(df.index.date).cumsum()
             ema20 = df["Close"].ewm(span=20).mean()
             ema50 = df["Close"].ewm(span=50).mean()
+            ema200 = df["Close"].ewm(span=200).mean()
 
             price = df["Close"].iloc[-1]
 
@@ -463,6 +464,7 @@ def load_global_prices(symbol):
         "SHOP": "SHOP.DE",
         "SQ": "SQ.DE",
         "PYPL":"PYPL.DE",
+        "RHM" :"RHM.DE",
 
         # -----------------------
         # AI / MOMENTUM / HALBLEITER
@@ -664,10 +666,10 @@ bias_15m = mtf_bias(df_15m)
 # -----------------------
 # INDICATORS
 # -----------------------
-
-df["EMA20"] = df["Close"].ewm(span=20).mean()
-df["EMA50"] = df["Close"].ewm(span=50).mean()
-
+df["EMA9"]  = df["Close"].ewm(span=9, adjust=False).mean()
+df["EMA20"] = df["Close"].ewm(span=20, adjust=False).mean()
+df["EMA50"] = df["Close"].ewm(span=50, adjust=False).mean()
+df["EMA200"] = df["Close"].ewm(span=200, adjust=False).mean()
 # -----------------------
 # ATR (GLOBAL FIX)
 # -----------------------
@@ -753,10 +755,6 @@ df["ADX"] = dx.ewm(span=14, adjust=False).mean()
 df["Trend_Strong"] = df["ADX"] > 25
 df["Trend_Long"] = df["+DI"] > df["-DI"]
 df["Trend_Short"] = df["-DI"] > df["+DI"]
-
-df["EMA9"]  = df["Close"].ewm(span=9, adjust=False).mean()
-df["EMA20"] = df["Close"].ewm(span=20, adjust=False).mean()
-df["EMA50"] = df["Close"].ewm(span=50, adjust=False).mean()
 
 df["Vol_Current"] = df["Volume"]
 df["Vol_Avg"] = df["Volume"].rolling(20).mean()
@@ -1212,6 +1210,7 @@ rsi_last = df["RSI"].iloc[-1]
 df["EMA9"]  = df["Close"].ewm(span=9, adjust=False).mean()
 df["EMA20"] = df["Close"].ewm(span=20, adjust=False).mean()
 df["EMA50"] = df["Close"].ewm(span=50, adjust=False).mean()
+df["EMA200"] = df["Close"].ewm(span=200, adjust=False).mean()
 
 # Volumen
 df["Vol_Current"] = df["Volume"]
@@ -1315,7 +1314,7 @@ col9.metric("Vol_Current", volume_value)
 volume_average = round(df["Vol_Avg"].iloc[-1], 2)
 col10.metric("Vol_Avg", volume_average)
 
-# ROW 4 (Macro Futures)
+# ROW 4 (EMA)
 col11, col12, col13 = st.columns(3)
 
 # EMA9 für das aktuell geladene Symbol
@@ -1326,6 +1325,18 @@ ema50 = round(df["EMA50"].iloc[-1], 2)
 col11.metric("EMA9", ema9)
 col12.metric("EMA20", ema20)
 col13.metric("EMA50", ema50)
+
+# ROW 5 (EMA)
+col14, col15, col16 = st.columns(3)
+
+ema200 = round(df["EMA200"].iloc[-1], 2)
+atr = round(df["ATR"].iloc[-1], 2)
+adx = round(df["ADX"].iloc[-1], 2)
+
+col14.metric("EMA200", ema200)
+col15.metric("ATR", atr)
+col16.metric("ADX", adx)
+
 
 st.caption(f"Session: {SESSION}")
 
