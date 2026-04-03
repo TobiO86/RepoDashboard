@@ -1288,12 +1288,12 @@ col2.metric(
     delta=f"{delta_price:+.2f} ({delta_percent:+.2f}%)"
 )
 
-col3.metric("VWAP \n(volume weighted average price)", f"${vwap_last:.2f}")
+col3.metric("VWAP \n(volume weighted \naverage price)", f"${vwap_last:.2f}")
 
 col5, col6, col7 = st.columns(3)
 
 macd_value = round(df["MACD"].iloc[-1], 2)
-col5.metric("MACD \n(moving average convergence divergence)", macd_value)
+col5.metric("MACD \n(moving average \nconvergence divergence)", macd_value)
 
 daily_high = round(df["Daily_High"].iloc[-1], 2)
 col6.metric("Daily_High", daily_high)
@@ -1305,7 +1305,7 @@ col7.metric("Daily_Low", daily_low)
 col8, col9, col10 = st.columns(3)
 
 rsi_last = df["RSI"].iloc[-1]
-col8.metric("RSI (relative strength index)", f"{rsi_last:.2f}")
+col8.metric("RSI \n(relative strength index)", f"{rsi_last:.2f}")
 
 volume_value = round(df["Vol_Current"].iloc[-1], 2)
 col9.metric("Vol_Current", volume_value)
@@ -1322,9 +1322,9 @@ ema9 = round(df["EMA9"].iloc[-1], 2)
 ema20 = round(df["EMA20"].iloc[-1], 2)
 ema50 = round(df["EMA50"].iloc[-1], 2)
 
-col11.metric("EMA9  \n(exponential moving average 9days)", ema9)
-col12.metric("EMA20 \n(exponential moving average 20days)", ema20)
-col13.metric("EMA50 \n(exponential moving average 50days)", ema50)
+col11.metric("EMA9  \n(exponential moving \naverage 9days)", ema9)
+col12.metric("EMA20 \n(exponential moving \naverage 20days)", ema20)
+col13.metric("EMA50 \n(exponential moving \naverage 50days)", ema50)
 
 # ROW 5 (EMA)
 col14, col15, col16 = st.columns(3)
@@ -1333,7 +1333,7 @@ ema200 = round(df["EMA200"].iloc[-1], 2)
 atr = round(df["ATR"].iloc[-1], 2)
 adx = round(df["ADX"].iloc[-1], 2)
 
-col14.metric("EMA200  \n(exponential moving average 200days)", ema200)
+col14.metric("EMA200  \n(exponential moving \naverage 200days)", ema200)
 col15.metric("ATR \n(average true range)", atr)
 col16.metric("ADX \n(average directional index)", adx)
 
