@@ -128,6 +128,25 @@ def filter_symbols_by_session(symbols, session):
 
     return symbols
 
+def compute_atr(df):
+    tr = np.maximum(
+        df["High"] - df["Low"],
+        np.maximum(
+            abs(df["High"] - df["Close"].shift(1)),
+            abs(df["Low"] - df["Close"].shift(1))
+        )
+    )
+    return tr.ewm(span=14, adjust=False).mean()
+
+def get_active_vwap(row):
+    if row["Session"] == "RTH":
+        return row["VWAP_RTH"]
+    elif row["Session"] == "PREMARKET":
+        return row["VWAP_PRE"]
+    elif row["Session"] == "AFTERHOURS":
+        return row["VWAP_AH"]
+    return row["Close"]
+
 @st.cache_data(ttl=180)
 def scan_market(limit=100):
     symbols = filter_symbols_by_session(get_sp500_symbols(), SESSION)[:limit]
@@ -139,7 +158,7 @@ def scan_market(limit=100):
     # --- Download ---
     for chunk in chunks:
         try:
-            d = yf.download(chunk.tolist(), period="2d", interval="5m", group_by="ticker", threads=False, progress=False)
+            d = yf.download(tickers=" ".join(chunk.tolist()), period="2d", interval="5m", group_by="ticker", threads=True, progress=False)
             if isinstance(d.columns, pd.MultiIndex):
                 for ticker in chunk:
                     df = d.get(ticker)
@@ -170,28 +189,47 @@ def scan_market(limit=100):
             if dollar_vol < 10_000_000:
                 continue
 
-            # --- Volatility (ATR) ---
-            tr = np.maximum(
-                df["High"] - df["Low"],
-                np.maximum(
-                    abs(df["High"] - df["Close"].shift(1)),
-                    abs(df["Low"] - df["Close"].shift(1))
-                )
-            )
-
-            atr = tr.rolling(14).mean().iloc[-1]
+            df["ATR"] = compute_atr(df)
+            
+            if df["ATR"].isna().all():
+                continue
+            atr = df["ATR"].iloc[-1]
             atr_pct = atr / price
 
             if atr_pct < 0.005:
                 continue
 
+            # -----------------------
+            # DMI + ADX
+            # -----------------------
+            up_move = df["High"].diff()
+            down_move = -df["Low"].diff()
+
+            df["+DM"] = np.where((up_move > down_move) & (up_move > 0), up_move, 0)
+            df["-DM"] = np.where((down_move > up_move) & (down_move > 0), down_move, 0)
+
+            plus_dm = df["+DM"].ewm(span=14, adjust=False).mean()
+            minus_dm = df["-DM"].ewm(span=14, adjust=False).mean()
+
+            df["+DI"] = 100 * (plus_dm / df["ATR"])
+            df["-DI"] = 100 * (minus_dm / df["ATR"])
+
+            dx = (np.abs(df["+DI"] - df["-DI"]) / (df["+DI"] + df["-DI"])) * 100
+            df["ADX"] = dx.ewm(span=14, adjust=False).mean()
+
+            # Trend Flags
+            df["Trend_Strong"] = df["ADX"] > 25
+            df["Trend_Long"] = df["+DI"] > df["-DI"]
+            df["Trend_Short"] = df["-DI"] > df["+DI"]
+            
+            
             # --- Relative Volume ---
             rel_vol = df["Volume"].iloc[-1] / avg_vol
 
             if rel_vol < 1.3:
                 continue
             
-            vwap = df["VWAP_RTH"].iloc[-1]
+            vwap = get_active_vwap(curr)
 
             delta = df["Close"].diff()
             gain = delta.clip(lower=0)
@@ -676,6 +714,12 @@ bias_15m = mtf_bias(df_15m)
 df["EMA20"] = df["Close"].ewm(span=20).mean()
 df["EMA50"] = df["Close"].ewm(span=50).mean()
 
+# -----------------------
+# ATR (GLOBAL FIX)
+# -----------------------
+df["ATR"] = compute_atr(df)
+df["ATR_pct"] = df["ATR"] / df["Close"]
+
 delta = df["Close"].diff()
 gain = delta.clip(lower=0)
 loss = -delta.clip(upper=0)
@@ -737,7 +781,24 @@ vwap_dev = (typical_price - df["VWAP_RTH"]).rolling(20).std()
 df["VWAP_upper2"] = df["VWAP_RTH"] + 2*vwap_dev
 df["VWAP_lower2"] = df["VWAP_RTH"] - 2*vwap_dev
 
+up_move = df["High"].diff()
+down_move = -df["Low"].diff()
 
+df["+DM"] = np.where((up_move > down_move) & (up_move > 0), up_move, 0)
+df["-DM"] = np.where((down_move > up_move) & (down_move > 0), down_move, 0)
+
+plus_dm = df["+DM"].ewm(span=14, adjust=False).mean()
+minus_dm = df["-DM"].ewm(span=14, adjust=False).mean()
+
+df["+DI"] = 100 * (plus_dm / df["ATR"])
+df["-DI"] = 100 * (minus_dm / df["ATR"])
+
+dx = (np.abs(df["+DI"] - df["-DI"]) / (df["+DI"] + df["-DI"])) * 100
+df["ADX"] = dx.ewm(span=14, adjust=False).mean()
+
+df["Trend_Strong"] = df["ADX"] > 25
+df["Trend_Long"] = df["+DI"] > df["-DI"]
+df["Trend_Short"] = df["-DI"] > df["+DI"]
 
 # -----------------------
 # BOLLINGER BANDS
@@ -777,8 +838,9 @@ df["cum_delta"] = df["delta"].cumsum()
 # -----------------------
 
 def detect_market_regime(df):
-    vwap = df["VWAP_RTH"]
     price = df["Close"]
+    # VWAP pro Zeile auswählen
+    vwap = df.apply(get_active_vwap, axis=1)
 
     # VWAP Cross Count
     crosses = ((price > vwap) != (price.shift(1) > vwap.shift(1))).rolling(20).sum()
@@ -788,7 +850,6 @@ def detect_market_regime(df):
     ema50 = df["EMA50"]
     trend_strength = abs(ema20 - ema50) / price
 
-    # Range vs Trend
     if crosses.iloc[-1] > 3 and trend_strength.iloc[-1] < 0.002:
         return "RANGE"
     else:
@@ -866,9 +927,26 @@ df["VWAP_Extreme_Low"]  = df["Close"] < df["VWAP_lower2"]
 df["HH"] = df["High"] > df["High"].shift(1)
 df["LL"] = df["Low"] < df["Low"].shift(1)
 
+ema_kc = df["Close"].ewm(span=20).mean()
+kc_mult = 1.5
+
+df["KC_UPPER"] = ema_kc + kc_mult * df["ATR"]
+df["KC_LOWER"] = ema_kc - kc_mult * df["ATR"]
+
+df["KC_Above"] = df["Close"] > df["KC_UPPER"]
+df["KC_Below"] = df["Close"] < df["KC_LOWER"]
+
+df["LongSignal"] = False
+df["ShortSignal"] = False
+
+df["LongScore"] = df["LongScore"].astype(float)
+df["ShortScore"] = df["ShortScore"].astype(float)
+ 
 for i in range(start, len(df)):
     prev = df.iloc[i-1]
     curr = df.iloc[i]
+    
+    vwap = get_active_vwap(curr)
     
     score_long = 0
 
@@ -883,21 +961,11 @@ for i in range(start, len(df)):
         "sellnews": 2
     }
     
-    def get_vwap(curr):
-        if curr["Session"] == "RTH":
-            return curr["VWAP_RTH"]
-        elif curr["Session"] == "PREMARKET":
-            return curr["VWAP_PRE"]
-        elif curr["Session"] == "AFTERHOURS":
-            return curr["VWAP_AH"]
-        else:
-            return curr["Close"]  # fallback
-    
     # Core Faktoren
     if prev["sweep_low"]:
         score_long += weights["sweep"]
 
-    vwap = get_vwap(curr)
+
     if curr["Close"] > vwap:
         score_long += weights["vwap"]
 
@@ -922,9 +990,6 @@ for i in range(start, len(df)):
     # Sell the news Reversal
     if df["SellNewsLong"].iloc[i]:
         score_long += weights["sellnews"]
-        
-    df["LongScore"] = df["LongScore"].astype(float)
-    df.at[df.index[i], "LongScore"] = round(score_long, 2)
 
     score_short = 0
 
@@ -943,7 +1008,6 @@ for i in range(start, len(df)):
     if prev["sweep_high"]:
         score_short += weights["sweep"]
         
-    vwap = get_vwap(curr)
     if curr["Close"] < vwap:
         score_short += weights["vwap"]
 
@@ -969,26 +1033,46 @@ for i in range(start, len(df)):
     if df["SellNewsShort"].iloc[i]:
         score_short += weights["sellnews"]
 
-    df["ShortScore"] = df["ShortScore"].astype(float)
-
-    # Optional: runden
-    df.at[df.index[i], "ShortScore"] = round(score_short, 2)
-
-    regime = df["MarketRegime"]
+    regime = detect_market_regime(df)
 
     # Mean Reversion Boost
-    if regime.iloc[i] == "RANGE":
+    if regime == "RANGE":
         if curr["Close"] > curr["VWAP_upper2"]:
             score_short += 2
         if curr["Close"] < curr["VWAP_lower2"]:
             score_long += 2
 
     # Trend Boost
-    if regime.iloc[i] == "TREND":
+    if regime == "TREND":
         if curr["Close"] > vwap:
             score_long += 1
         if curr["Close"] < vwap:
             score_short += 1
+            
+            
+        # --- NEU: ATR Filter ---
+    if curr["ATR_pct"] > 0.005:
+        if curr["Close"] > vwap:
+            score_long += 1
+        else:
+            score_short += 1
+
+    # --- NEU: KC Trend ---
+    if curr["KC_Below"]:
+        score_short += 1
+
+
+    # --- NEU: KC Trend ---
+    if curr["KC_Above"]:
+        score_long += 1
+
+    # --- NEU: Trend Strength ---
+    if curr["Trend_Strong"] and curr["Trend_Long"]:
+        score_long += 2  
+        
+    # --- NEU: Trend Strength ---
+    if curr["Trend_Strong"] and curr["Trend_Short"]:
+        score_short += 2      
             
     if df["VWAP_Reclaim_Long"].iloc[i]:
         score_long += 2
@@ -1009,33 +1093,36 @@ for i in range(start, len(df)):
         score_short += 1
         
     if (
-        df["LongScore"].iloc[i] >= 6 and
+        score_long  >= 6 and
         df["MarketRegime"].iloc[i] == "TREND"
     ):
         df.at[df.index[i], "LongSignal"] = True
 
     elif (
-        df["ShortScore"].iloc[i] >= 6 and
+        score_short  >= 6 and
         df["MarketRegime"].iloc[i] == "TREND"
     ):
         df.at[df.index[i], "ShortSignal"] = True
 
     # RANGE MODE
     elif (
-        df["LongScore"].iloc[i] >= 5 and
+        score_long  >= 5 and
         df["MarketRegime"].iloc[i] == "RANGE"
     ):
         df.at[df.index[i], "LongSignal"] = True
 
     elif (
-        df["ShortScore"].iloc[i] >= 5 and
+        score_short >= 5 and
         df["MarketRegime"].iloc[i] == "RANGE"
     ):
         df.at[df.index[i], "ShortSignal"] = True 
         
-        # Normalize auf 0–10
-    df.at[df.index[i], "LongScore"] = min(score_long, 10)
-    df.at[df.index[i], "ShortScore"] = min(score_short, 10)  
+    # ganz am Ende des Loops
+    score_long = min(score_long, 10)
+    score_short = min(score_short, 10)
+
+    df.at[df.index[i], "LongScore"] = score_long
+    df.at[df.index[i], "ShortScore"] = score_short
     
      
 # -----------------------
@@ -1044,9 +1131,6 @@ for i in range(start, len(df)):
 
 HIGH_PROB_MODE = True
 SCORE_THRESHOLD = 5
-
-df["LongSignal"] = False
-df["ShortSignal"] = False
 
 df["ScoreDelta"] = df["LongScore"] - df["ShortScore"]
 
@@ -1084,16 +1168,16 @@ df["TP"] = np.nan
 
 for i in range(1, len(df)):
     if df["LongSignal"].iloc[i]:
-        sl = df["Low"].iloc[i-1]
         entry = df["Close"].iloc[i]
-        df.at[df.index[i], "SL"] = sl
-        df.at[df.index[i], "TP"] = entry + (entry - sl) * 2
+        atr = df["ATR"].iloc[i]
+        df.at[df.index[i], "SL"] = entry - atr * 1.5
+        df.at[df.index[i], "TP"] = entry + atr * 2.5
 
     if df["ShortSignal"].iloc[i]:
-        sl = df["High"].iloc[i-1]
         entry = df["Close"].iloc[i]
-        df.at[df.index[i], "SL"] = sl
-        df.at[df.index[i], "TP"] = entry - (sl - entry) * 2
+        atr = df["ATR"].iloc[i]
+        df.at[df.index[i], "SL"] = entry + atr * 1.5
+        df.at[df.index[i], "TP"] = entry - atr * 2.5
 
 # -----------------------
 # PRICE METRICS
@@ -1427,6 +1511,8 @@ fig.add_trace(go.Scatter(x=df.index,y=df["EMA50"],name="EMA50"),row=price_row,co
 fig.add_trace(go.Scatter(x=df.index,y=df["VWAP_upper2"],name="VWAP +2"),row=price_row,col=1)
 fig.add_trace(go.Scatter(x=df.index,y=df["VWAP_lower2"],name="VWAP -2"),row=price_row,col=1)
 
+fig.add_trace(go.Scatter(x=df.index,y=df["KC_UPPER"],name="KC Upper"),row=price_row,col=1)
+fig.add_trace(go.Scatter(x=df.index,y=df["KC_LOWER"],name="KC Lower"),row=price_row,col=1)
 session_colors = {
     "PREMARKET": "lightblue",
     "RTH": "white",
