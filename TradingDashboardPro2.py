@@ -1322,9 +1322,9 @@ ema9 = round(df["EMA9"].iloc[-1], 2)
 ema20 = round(df["EMA20"].iloc[-1], 2)
 ema50 = round(df["EMA50"].iloc[-1], 2)
 
-col11.metric("EMA9  \n(exponential moving \naverage 9days)", ema9)
-col12.metric("EMA20 \n(exponential moving \naverage 20days)", ema20)
-col13.metric("EMA50 \n(exponential moving \naverage 50days)", ema50)
+col11.metric("EMA9  \n (exponential moving \n  average 9days)", ema9)
+col12.metric("EMA20  \n (exponential moving \n  average 20days)", ema20)
+col13.metric("EMA50  \n (exponential moving \n  average 50days)", ema50)
 
 # ROW 5 (EMA)
 col14, col15, col16 = st.columns(3)
@@ -1333,9 +1333,9 @@ ema200 = round(df["EMA200"].iloc[-1], 2)
 atr = round(df["ATR"].iloc[-1], 2)
 adx = round(df["ADX"].iloc[-1], 2)
 
-col14.metric("EMA200  \n(exponential moving \naverage 200days)", ema200)
-col15.metric("ATR \n(average true range)", atr)
-col16.metric("ADX \n(average directional index)", adx)
+col14.metric("EMA200  \n  (exponential moving \n  average 200days)", ema200)
+col15.metric("ATR  \n  (average true range)", atr)
+col16.metric("ADX  \n  (average directional index)", adx)
 
 score = 0
 
