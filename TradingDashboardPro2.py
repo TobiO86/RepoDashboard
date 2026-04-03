@@ -94,13 +94,6 @@ def get_sp500_symbols():
         "SPY","QQQ","IWM","DIA","XLF","XLK","XLE",
         
         # -----------------------
-        # FUTURES (24/5)
-        # -----------------------
-        "ES=F",   # S&P 500 Futures
-        "NQ=F",   # Nasdaq Futures
-        "YM=F",   # Dow Futures
-        "RTY=F",  # Russell
-        # -----------------------
         # INDIZES
         # -----------------------
         "^GSPC","^NDX","^DJI",
@@ -229,6 +222,7 @@ def scan_market(limit=100):
             if rel_vol < 1.3:
                 continue
             
+            curr = df.iloc[-1]
             vwap = get_active_vwap(curr)
 
             delta = df["Close"].diff()
@@ -499,45 +493,6 @@ def load_global_prices(symbol):
 
     return eu_price, eu_symbol
 
-@st.cache_data(ttl=10)
-def load_futures_prices():
-    futures = {
-        "ES": "ES=F",   # S&P500
-        "NQ": "NQ=F",   # Nasdaq
-        "YM": "YM=F",   # Dow
-        "CL": "CL=F",   # Öl
-        "NG": "NG=F",   # Gas
-        "GC": "GC=F",   # Gold
-        "SI": "SI=F",   # Silber
-        "HG": "HG=F",   # Kupfer
-        "ZN": "ZN=F",   # 10 Jahres Anleihen
-        "ZB": "ZB=F",   # 30 Jahres Anleihen
-        "DX": "DX=F"    # Dollar
-    }
-
-    prices = {}
-
-    for name, ticker in futures.items():
-        try:
-            df = yf.download(
-                ticker,
-                period="1d",
-                interval="1m",
-                progress=False,
-                prepost=True  # <-- Pre- und After-Hours aktiv
-            )
-            if df.empty:
-                prices[name] = np.nan
-                continue
-
-            # Letzter Close, inkl. Pre/After-Hours
-            prices[name] = float(df["Close"].iloc[-1])
-
-        except:
-            prices[name] = np.nan
-
-    return prices
-
 @st.cache_data(ttl=60)
 def load_data_with_premarket(symbol, period, interval):
     # prepost=True liefert auch Pre- und After-Hours
@@ -639,7 +594,6 @@ def normalize_df(df):
     return df
 
 df, symbol_eu = load_multi_exchange(symbol, period, interval)
-futures = load_futures_prices()
 df = normalize_df(df)
 df = df.loc[:, ~df.columns.duplicated()]
 
@@ -799,6 +753,37 @@ df["ADX"] = dx.ewm(span=14, adjust=False).mean()
 df["Trend_Strong"] = df["ADX"] > 25
 df["Trend_Long"] = df["+DI"] > df["-DI"]
 df["Trend_Short"] = df["-DI"] > df["+DI"]
+
+df["EMA9"]  = df["Close"].ewm(span=9, adjust=False).mean()
+df["EMA20"] = df["Close"].ewm(span=20, adjust=False).mean()
+df["EMA50"] = df["Close"].ewm(span=50, adjust=False).mean()
+
+df["Vol_Current"] = df["Volume"]
+df["Vol_Avg"] = df["Volume"].rolling(20).mean()
+
+df["Daily_High"] = df["High"].rolling("1D").max()
+df["Daily_Low"] = df["Low"].rolling("1D").min()
+
+up_move = df["High"].diff()
+down_move = -df["Low"].diff()
+
+df["+DM"] = np.where((up_move > down_move) & (up_move > 0), up_move, 0)
+df["-DM"] = np.where((down_move > up_move) & (down_move > 0), down_move, 0)
+
+tr = np.maximum(df["High"] - df["Low"], 
+       np.maximum(abs(df["High"] - df["Close"].shift(1)), abs(df["Low"] - df["Close"].shift(1))))
+atr = tr.ewm(span=14, adjust=False).mean()
+
+df["+DI"] = 100 * (df["+DM"].ewm(span=14, adjust=False).mean() / atr)
+df["-DI"] = 100 * (df["-DM"].ewm(span=14, adjust=False).mean() / atr)
+
+dx = (abs(df["+DI"] - df["-DI"]) / (df["+DI"] + df["-DI"])) * 100
+df["ADX"] = dx.ewm(span=14, adjust=False).mean()
+
+kc_mult = 1.5
+df["KC_MID"] = df["Close"].ewm(span=20, adjust=False).mean()  # zentrale Linie, EMA20
+df["KC_UPPER"] = df["KC_MID"] + kc_mult * df["ATR"]
+df["KC_LOWER"] = df["KC_MID"] - kc_mult * df["ATR"]
 
 # -----------------------
 # BOLLINGER BANDS
@@ -1092,6 +1077,13 @@ for i in range(start, len(df)):
     if curr["LL"]:
         score_short += 1
         
+    # ganz am Ende des Loops
+    score_long = min(score_long, 10)
+    score_short = min(score_short, 10)
+
+    df.at[df.index[i], "LongScore"] = score_long
+    df.at[df.index[i], "ShortScore"] = score_short
+       
     if (
         score_long  >= 6 and
         df["MarketRegime"].iloc[i] == "TREND"
@@ -1116,13 +1108,7 @@ for i in range(start, len(df)):
         df["MarketRegime"].iloc[i] == "RANGE"
     ):
         df.at[df.index[i], "ShortSignal"] = True 
-        
-    # ganz am Ende des Loops
-    score_long = min(score_long, 10)
-    score_short = min(score_short, 10)
-
-    df.at[df.index[i], "LongScore"] = score_long
-    df.at[df.index[i], "ShortScore"] = score_short
+    
     
      
 # -----------------------
@@ -1221,6 +1207,36 @@ vwap_last = (df_fast["Close"] * df_fast["Volume"]).cumsum() / df_fast["Volume"].
 vwap_last = vwap_last.iloc[-1]
 
 rsi_last = df["RSI"].iloc[-1]
+
+# EMA
+df["EMA9"]  = df["Close"].ewm(span=9, adjust=False).mean()
+df["EMA20"] = df["Close"].ewm(span=20, adjust=False).mean()
+df["EMA50"] = df["Close"].ewm(span=50, adjust=False).mean()
+
+# Volumen
+df["Vol_Current"] = df["Volume"]
+df["Vol_Avg"] = df["Volume"].rolling(20).mean()
+
+# Daily High / Low
+df["Daily_High"] = df["High"].rolling("1D").max()
+df["Daily_Low"] = df["Low"].rolling("1D").min()
+
+# DMI / ADX
+tr = np.maximum(df["High"] - df["Low"], 
+                np.maximum(abs(df["High"] - df["Close"].shift(1)), abs(df["Low"] - df["Close"].shift(1))))
+atr = tr.ewm(span=14, adjust=False).mean()
+
+up_move = df["High"].diff()
+down_move = -df["Low"].diff()
+
+df["+DM"] = np.where((up_move > down_move) & (up_move > 0), up_move, 0)
+df["-DM"] = np.where((down_move > up_move) & (down_move > 0), down_move, 0)
+
+df["+DI"] = 100 * (df["+DM"].ewm(span=14, adjust=False).mean() / atr)
+df["-DI"] = 100 * (df["-DM"].ewm(span=14, adjust=False).mean() / atr)
+
+dx = (abs(df["+DI"] - df["-DI"]) / (df["+DI"] + df["-DI"])) * 100
+df["ADX"] = dx.ewm(span=14, adjust=False).mean()
 
 # -----------------------
 # AUTO REFRESH (NUR METRICS)
@@ -1472,6 +1488,10 @@ fig.add_trace(go.Candlestick(
     opacity=0.5
 ))
 
+fig.add_trace(go.Candlestick(
+    x=df.index, open=df["Open"], high=df["High"], low=df["Low"], close=df["Close"], name="Price"
+))
+
 if not rth_df.empty and "VWAP_RTH" in rth_df.columns and rth_df["VWAP_RTH"].notna().any():
     fig.add_trace(
         go.Scatter(
@@ -1512,12 +1532,14 @@ fig.add_trace(go.Scatter(x=df.index,y=df["VWAP_upper2"],name="VWAP +2"),row=pric
 fig.add_trace(go.Scatter(x=df.index,y=df["VWAP_lower2"],name="VWAP -2"),row=price_row,col=1)
 
 fig.add_trace(go.Scatter(x=df.index,y=df["KC_UPPER"],name="KC Upper"),row=price_row,col=1)
+fig.add_trace(go.Scatter(x=df.index, y=df["KC_MID"],  line=dict(color="blue", width=1),  name="KC Mid"))
 fig.add_trace(go.Scatter(x=df.index,y=df["KC_LOWER"],name="KC Lower"),row=price_row,col=1)
 session_colors = {
     "PREMARKET": "lightblue",
     "RTH": "white",
     "AFTERHOURS": "lightcoral"
 }
+
 # Timeline über Candles setzen
 fig.add_trace(
     go.Scatter(
