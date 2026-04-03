@@ -525,7 +525,6 @@ def mark_premarket(df):
 
 @st.cache_data(ttl=60)
 def load_multi_exchange(symbol, period, interval):
-    # Mapping US -> EU (erweiterbar)
     eu_map = {
         "TSLA": "TSLA.DE",
         "NVDA": "NVDA.DE",
@@ -536,7 +535,9 @@ def load_multi_exchange(symbol, period, interval):
 
     symbol_eu = eu_map.get(symbol)
 
-    # US Daten (bestehend)
+    # -----------------------
+    # US DATA
+    # -----------------------
     df_us = yf.download(
         symbol,
         period=period,
@@ -545,18 +546,25 @@ def load_multi_exchange(symbol, period, interval):
         prepost=True
     )
 
+    if df_us is None or df_us.empty:
+        return pd.DataFrame(), None
+
     if isinstance(df_us.columns, pd.MultiIndex):
         df_us.columns = df_us.columns.get_level_values(0)
 
     df_us = df_us.dropna()
 
-    # Falls kein EU Symbol → return normal
+    # -----------------------
+    # NO EU SYMBOL
+    # -----------------------
     if not symbol_eu:
         df_us["EU_Close"] = np.nan
         df_us["Spread"] = np.nan
         return df_us, None
 
-    # EU Daten
+    # -----------------------
+    # EU DATA
+    # -----------------------
     df_eu = yf.download(
         symbol_eu,
         period=period,
@@ -565,19 +573,35 @@ def load_multi_exchange(symbol, period, interval):
         prepost=True
     )
 
+    # 🔴 WICHTIGER FIX
+    if df_eu is None or df_eu.empty or "Close" not in df_eu.columns:
+        df_us["EU_Close"] = np.nan
+        df_us["Spread"] = np.nan
+        return df_us, symbol_eu
+
     if isinstance(df_eu.columns, pd.MultiIndex):
         df_eu.columns = df_eu.columns.get_level_values(0)
 
     df_eu = df_eu.dropna()
 
-    # Timezone Alignment
+    # -----------------------
+    # TIMEZONE FIX
+    # -----------------------
     try:
+        if df_us.index.tz is None:
+            df_us.index = df_us.index.tz_localize("UTC")
+        if df_eu.index.tz is None:
+            df_eu.index = df_eu.index.tz_localize("UTC")
+
         df_us.index = df_us.index.tz_convert("US/Eastern")
         df_eu.index = df_eu.index.tz_convert("US/Eastern")
-    except:
-        pass
+    except Exception as e:
+        print("TZ Error:", e)
 
-    df_us["EU_Close"] = df_eu["Close"].reindex(df_us.index, method="ffill") if symbol_eu else np.nan
+    # -----------------------
+    # MERGE
+    # -----------------------
+    df_us["EU_Close"] = df_eu["Close"].reindex(df_us.index, method="ffill")
     df_us["Spread"] = df_us["Close"] - df_us["EU_Close"]
 
     return df_us, symbol_eu
