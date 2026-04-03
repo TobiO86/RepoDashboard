@@ -1288,12 +1288,12 @@ col2.metric(
     delta=f"{delta_price:+.2f} ({delta_percent:+.2f}%)"
 )
 
-col3.metric("VWAP \n  (volume weighted average price)", f"${vwap_last:.2f}")
+col3.metric("VWAP  \n  (volume weighted average price)", f"${vwap_last:.2f}")
 
 col5, col6, col7 = st.columns(3)
 
 macd_value = round(df["MACD"].iloc[-1], 2)
-col5.metric("MACD \n  (moving average convergence divergence)", macd_value)
+col5.metric("MACD  \n  (moving average convergence divergence)", macd_value)
 
 daily_high = round(df["Daily_High"].iloc[-1], 2)
 col6.metric("Daily_High", daily_high)
@@ -1305,7 +1305,7 @@ col7.metric("Daily_Low", daily_low)
 col8, col9, col10 = st.columns(3)
 
 rsi_last = df["RSI"].iloc[-1]
-col8.metric("RSI \n  (relative strength index)", f"{rsi_last:.2f}")
+col8.metric("RSI  \n  (relative strength index)", f"{rsi_last:.2f}")
 
 volume_value = round(df["Vol_Current"].iloc[-1], 2)
 col9.metric("Vol_Current", volume_value)
