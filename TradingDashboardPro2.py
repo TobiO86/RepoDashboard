@@ -1353,6 +1353,16 @@ elif score <= 1:
 else:
     trend = "Neutral"
 
+color_map = {
+    "Bullish": "green",
+    "Bearish": "red",
+    "Neutral": "gray"
+}
+
+st.markdown(
+    f"<h2 style='color:{color_map[trend]}'>Trend: {trend} (Score {score}/3)</h2>",
+    unsafe_allow_html=True
+)
 
 st.caption(f"Session: {SESSION}")
 
@@ -1923,12 +1933,6 @@ for i in range(1, rows+1):
     )
 
 
-color_map = {
-    "Bullish": "green",
-    "Bearish": "red",
-    "Neutral": "gray"
-}
-
 st.markdown("""
 <style>
 
@@ -1997,13 +2001,6 @@ section[data-testid="stSidebar"] div[data-baseweb="select"] span {
     color: #f3f4f6 !important;             /* ausgewählter Text */
 }
 
-<h2 style='color:{color_map[trend]}'>Trend: {trend}</h2>",
-unsafe_allow_html=True
-
-<h2 style='color:{color_map[trend]}'>Trend: {trend}</h2>
-<p>Score: {score} / 3</p>
-
-unsafe_allow_html=True
 </style>
 """, unsafe_allow_html=True)
 
