@@ -1360,7 +1360,7 @@ color_map = {
 }
 
 st.markdown(
-    f"<h2 style='color:{color_map[trend]}'>Trend: {trend} (Score {score}/3)</h2>",
+    f"<span style='color:{color_map[trend]}; font-size:24px; font-weight:bold'>Trend: {trend} (Score {score}/3)</span>",
     unsafe_allow_html=True
 )
 
