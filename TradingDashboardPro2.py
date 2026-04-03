@@ -1305,15 +1305,15 @@ col7.metric("Daily_Low", daily_low)
 # ROW 3 (Commodities / weitere Futures)
 col8, col9, col10 = st.columns(3)
 
+rsi_last = df["RSI"].iloc[-1]
+col8.metric("RSI", f"{rsi_last:.2f}")
+
 volume_value = round(df["Vol_Current"].iloc[-1], 2)
-col8.metric("Vol_Current", volume_value)
+col9.metric("Vol_Current", volume_value)
 
 # Optional: andere Metriken daneben
 volume_average = round(df["Vol_Avg"].iloc[-1], 2)
-col9.metric("Vol_Avg", volume_average)
-
-rsi_last = df["RSI"].iloc[-1]
-col10.metric("RSI", f"{rsi_last:.2f}")
+col10.metric("Vol_Avg", volume_average)
 
 # ROW 4 (Macro Futures)
 col11, col12, col13 = st.columns(3)
