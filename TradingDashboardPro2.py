@@ -1279,7 +1279,7 @@ col1, col2, col3, col4 = st.columns(4)
 
 # 4️⃣ Metric
 col1.metric(
-    label=f"{display_name} (RTH vs Current){eu_display}", 
+    label=f"{display_name} (RTH){eu_display}", 
     value=f"${current_price:.2f}"
 )
 
@@ -1294,29 +1294,39 @@ col3.metric("VWAP", f"${vwap_last:.2f}")
 rsi_last = df["RSI"].iloc[-1]
 col4.metric("RSI", f"{rsi_last:.2f}")
 
-# ROW 2 (Futures separat)
 col5, col6, col7 = st.columns(3)
 
-# FUTURES
-col5.metric("ES (S&P)",f"{futures.get('ES', np.nan):.0f}" if not np.isnan(futures.get('ES', np.nan)) else "-")
-col6.metric("NQ (Nasdaq)",f"{futures.get('NQ', np.nan):.0f}" if not np.isnan(futures.get('NQ', np.nan)) else "-")
-col7.metric("YM (Dow)",f"{futures.get('YM', np.nan):.0f}" if not np.isnan(futures.get('YM', np.nan)) else "-")
+macd_value = round(df["MACD"].iloc[-1], 4)
+col5.metric("MACD", macd_value)
+
+daily_high = round(df["Daily_High"].iloc[-1], 4)
+col6.metric("Daily_High", daily_high)
+
+daily_low = round(df["Daily_Low"].iloc[-1], 4)
+col7.metric("Daily_Low", daily_low)
 
 # ROW 3 (Commodities / weitere Futures)
-col8, col9, col10, col11 = st.columns(4)
+col8, col9, col10 = st.columns(3)
 
-col8.metric("CL (Oil)",f"{futures.get('CL', np.nan):.2f}" if not np.isnan(futures.get('CL', np.nan)) else "-")
-col9.metric("NG (Gas)",f"{futures.get('NG', np.nan):.2f}" if not np.isnan(futures.get('NG', np.nan)) else "-")
-col10.metric("GC (Gold)",f"{futures.get('GC', np.nan):.2f}" if not np.isnan(futures.get('GC', np.nan)) else "-")
-col11.metric("SI (Silver)",f"{futures.get('SI', np.nan):.2f}" if not np.isnan(futures.get('SI', np.nan)) else "-")
+# EMA9 für das aktuell geladene Symbol
+ema9 = round(df["EMA9"].iloc[-1], 2)
+ema20 = round(df["EMA20"].iloc[-1], 2)
+ema50 = round(df["EMA50"].iloc[-1], 2)
+
+col8.metric("EMA9", ema9)
+col9.metric("EMA20", ema20)
+col10.metric("EMA50", ema50)
 
 # ROW 4 (Macro Futures)
-col12, col13, col14, col15 = st.columns(4)
+col11, col12, col13 = st.columns(3)
 
-col12.metric("HG (Copper)",f"{futures.get('HG', np.nan):.2f}" if not np.isnan(futures.get('HG', np.nan)) else "-")
-col13.metric("ZN (10Y)",f"{futures.get('ZN', np.nan):.2f}" if not np.isnan(futures.get('ZN', np.nan)) else "-")
-col14.metric("ZB (30Y)", f"{futures.get('ZB', np.nan):.2f}" if not np.isnan(futures.get('ZB', np.nan)) else "-")
-col15.metric("DX (Dollar)", f"{futures.get('DX', np.nan):.2f}" if not np.isnan(futures.get('DX', np.nan)) else "-")
+volume_value = round(df["Vol_Current"].iloc[-1], 2)
+col11.metric("Vol_Current", volume_value)
+
+# Optional: andere Metriken daneben
+volume_average = round(df["Vol_Avg"].iloc[-1], 2)
+col12.metric("Vol_Avg", volume_average)
+
 
 
 st.caption(f"Session: {SESSION}")
