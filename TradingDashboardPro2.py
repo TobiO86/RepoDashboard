@@ -1275,7 +1275,7 @@ name = get_company_name(symbol)
 
 display_name = f"{name} ({symbol})" if name != symbol else symbol
 
-col1, col2, col3, col4 = st.columns(4)
+col1, col2, col3 = st.columns(3)
 
 # 4️⃣ Metric
 col1.metric(
@@ -1291,43 +1291,41 @@ col2.metric(
 
 col3.metric("VWAP", f"${vwap_last:.2f}")
 
-rsi_last = df["RSI"].iloc[-1]
-col4.metric("RSI", f"{rsi_last:.2f}")
-
 col5, col6, col7 = st.columns(3)
 
-macd_value = round(df["MACD"].iloc[-1], 4)
+macd_value = round(df["MACD"].iloc[-1], 2)
 col5.metric("MACD", macd_value)
 
-daily_high = round(df["Daily_High"].iloc[-1], 4)
+daily_high = round(df["Daily_High"].iloc[-1], 2)
 col6.metric("Daily_High", daily_high)
 
-daily_low = round(df["Daily_Low"].iloc[-1], 4)
+daily_low = round(df["Daily_Low"].iloc[-1], 2)
 col7.metric("Daily_Low", daily_low)
 
 # ROW 3 (Commodities / weitere Futures)
 col8, col9, col10 = st.columns(3)
+
+volume_value = round(df["Vol_Current"].iloc[-1], 2)
+col8.metric("Vol_Current", volume_value)
+
+# Optional: andere Metriken daneben
+volume_average = round(df["Vol_Avg"].iloc[-1], 2)
+col9.metric("Vol_Avg", volume_average)
+
+rsi_last = df["RSI"].iloc[-1]
+col10.metric("RSI", f"{rsi_last:.2f}")
+
+# ROW 4 (Macro Futures)
+col11, col12, col13 = st.columns(3)
 
 # EMA9 für das aktuell geladene Symbol
 ema9 = round(df["EMA9"].iloc[-1], 2)
 ema20 = round(df["EMA20"].iloc[-1], 2)
 ema50 = round(df["EMA50"].iloc[-1], 2)
 
-col8.metric("EMA9", ema9)
-col9.metric("EMA20", ema20)
-col10.metric("EMA50", ema50)
-
-# ROW 4 (Macro Futures)
-col11, col12, col13 = st.columns(3)
-
-volume_value = round(df["Vol_Current"].iloc[-1], 2)
-col11.metric("Vol_Current", volume_value)
-
-# Optional: andere Metriken daneben
-volume_average = round(df["Vol_Avg"].iloc[-1], 2)
-col12.metric("Vol_Avg", volume_average)
-
-
+col11.metric("EMA9", ema9)
+col12.metric("EMA20", ema20)
+col13.metric("EMA50", ema50)
 
 st.caption(f"Session: {SESSION}")
 
