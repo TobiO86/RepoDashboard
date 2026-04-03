@@ -1337,6 +1337,22 @@ col14.metric("EMA200", ema200)
 col15.metric("ATR", atr)
 col16.metric("ADX", adx)
 
+score = 0
+
+if df["Close"].iloc[-1] > df["EMA200"].iloc[-1]:
+    score += 1
+if df["EMA50"].iloc[-1] > df["EMA200"].iloc[-1]:
+    score += 1
+if df["ADX"].iloc[-1] > 25:
+    score += 1
+
+if score >= 2:
+    trend = "Bullish"
+elif score <= 1:
+    trend = "Bearish"
+else:
+    trend = "Neutral"
+
 
 st.caption(f"Session: {SESSION}")
 
@@ -1906,6 +1922,13 @@ for i in range(1, rows+1):
         row=i, col=1
     )
 
+
+color_map = {
+    "Bullish": "green",
+    "Bearish": "red",
+    "Neutral": "gray"
+}
+
 st.markdown("""
 <style>
 
@@ -1974,6 +1997,13 @@ section[data-testid="stSidebar"] div[data-baseweb="select"] span {
     color: #f3f4f6 !important;             /* ausgewählter Text */
 }
 
+<h2 style='color:{color_map[trend]}'>Trend: {trend}</h2>",
+unsafe_allow_html=True
+
+<h2 style='color:{color_map[trend]}'>Trend: {trend}</h2>
+<p>Score: {score} / 3</p>
+
+unsafe_allow_html=True
 </style>
 """, unsafe_allow_html=True)
 
