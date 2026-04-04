@@ -1622,78 +1622,78 @@ for i in range(1, rows+1):
     fig.update_xaxes(showgrid=False, color="#e6e6e6", row=i, col=1)
     fig.update_yaxes(showgrid=True, gridcolor="#1f2937", color="#e6e6e6", row=i, col=1)
 
-    st.markdown("""
-    <style>
+st.markdown("""
+<style>
 
-    /* -------- GLOBAL DARK MODE -------- */
-    html, body, [class*="css"]  {
-        background-color: #0e1117 !important;
-        color: #e6e6e6 !important;
-    }
+/* -------- GLOBAL DARK MODE -------- */
+html, body, [class*="css"]  {
+    background-color: #0e1117 !important;
+    color: #e6e6e6 !important;
+}
 
-    /* MAIN CONTAINER */
-    .stApp {
-        background-color: #0e1117 !important;
-    }
+/* MAIN CONTAINER */
+.stApp {
+    background-color: #0e1117 !important;
+}
 
-    /* BLOCK CONTAINER */
-    .block-container {
-        background-color: #0e1117 !important;
-    }
+/* BLOCK CONTAINER */
+.block-container {
+    background-color: #0e1117 !important;
+}
 
-    /* TEXT FIX */
-    h1, h2, h3, h4, h5, h6, p, span, label {
-        color: #e6e6e6 !important;
-    }
+/* TEXT FIX */
+h1, h2, h3, h4, h5, h6, p, span, label {
+    color: #e6e6e6 !important;
+}
 
-    /* SIDEBAR */
-    section[data-testid="stSidebar"] {
-        background-color: #111827 !important;
-    }
+/* SIDEBAR */
+section[data-testid="stSidebar"] {
+    background-color: #111827 !important;
+}
 
-    section[data-testid="stSidebar"] * {
-        color: #e6e6e6 !important;
-    }
+section[data-testid="stSidebar"] * {
+    color: #e6e6e6 !important;
+}
 
-    /* INPUTS */
-    input, textarea, div[data-baseweb="select"] {
-        background-color: #1f2937 !important;
-        color: #e6e6e6 !important;
-    }
+/* INPUTS */
+input, textarea, div[data-baseweb="select"] {
+    background-color: #1f2937 !important;
+    color: #e6e6e6 !important;
+}
 
-    /* BUTTONS */
-    .stButton>button {
-        background-color: #1f2937 !important;
-        color: #e6e6e6 !important;
-        border-radius: 8px;
-    }
+/* BUTTONS */
+.stButton>button {
+    background-color: #1f2937 !important;
+    color: #e6e6e6 !important;
+    border-radius: 8px;
+}
 
-    /* METRICS */
-    [data-testid="metric-container"] {
-        background-color: #111827;
-        padding: 12px;
-        border-radius: 12px;
-    }
+/* METRICS */
+[data-testid="metric-container"] {
+    background-color: #111827;
+    padding: 12px;
+    border-radius: 12px;
+}
 
-    /* REMOVE WHITE BLOCKS */
-    [data-testid="stVerticalBlock"] {
-        background-color: transparent !important;
-    }
+/* REMOVE WHITE BLOCKS */
+[data-testid="stVerticalBlock"] {
+    background-color: transparent !important;
+}
 
-    /* Selectbox in Sidebar */
-    section[data-testid="stSidebar"] div[data-baseweb="select"] > div {
-        background-color: #1f2937 !important;  /* dunkler Hintergrund */
-        color: #f3f4f6 !important;             /* heller Text */
-    }
+/* Selectbox in Sidebar */
+section[data-testid="stSidebar"] div[data-baseweb="select"] > div {
+    background-color: #1f2937 !important;  /* dunkler Hintergrund */
+    color: #f3f4f6 !important;             /* heller Text */
+}
 
-    section[data-testid="stSidebar"] div[data-baseweb="select"] span {
-        color: #f3f4f6 !important;             /* ausgewählter Text */
-    }
+section[data-testid="stSidebar"] div[data-baseweb="select"] span {
+    color: #f3f4f6 !important;             /* ausgewählter Text */
+}
 
-    </style>
-    """, unsafe_allow_html=True)
+</style>
+""", unsafe_allow_html=True)
 
-    st.plotly_chart(fig, use_container_width=True)
+st.plotly_chart(fig, use_container_width=True)
 
 # -----------------------
 # ALERT / SIGNAL OUTPUT
