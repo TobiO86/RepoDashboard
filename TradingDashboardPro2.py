@@ -1594,11 +1594,7 @@ fig.update_layout(
 # X-Achse NUR beim Price Chart anzeigen
 for i in range(1, rows+1):
     if i == price_row:
-        fig.update_xaxes(
-    tickformat="%H:%M\n%Y-%m-%d",
-    row=price_row,
-    col=1
-)
+        fig.update_xaxes(showticklabels=True, row=i, col=1)
     else:
         fig.update_xaxes(showticklabels=False, row=i, col=1)  
 st.markdown("""
