@@ -1606,7 +1606,6 @@ for i in range(1, rows+1):
     fig.update_xaxes(showgrid=False, color="#e6e6e6", row=i, col=1)
     fig.update_yaxes(showgrid=True, gridcolor="#1f2937", color="#e6e6e6", row=i, col=1)
 
-st.plotly_chart(fig, use_container_width=True)   
     
 st.markdown("""
 <style>
