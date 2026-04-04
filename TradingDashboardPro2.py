@@ -1616,32 +1616,31 @@ add("BB_UPPER", "BB U")
 add("BB_LOWER", "BB L")
 add("BB_MID", "BB M")
 
- # -----------------------
+# -----------------------
 # SUPPORT / RESISTANCE FILTER
 # -----------------------
 filtered_supports = []
 filtered_resistances = []
 
 if not df.empty and "High" in df.columns and "Low" in df.columns:
-
     price_range = df["High"].max() - df["Low"].min()
     current_price = df["Close"].iloc[-1]
 
     # Sicherheitscheck
     if price_range > 0:
+        if 'supports' in locals() and supports:
+            filtered_supports = sorted(supports, key=lambda x: abs(x - current_price))[:2]
+        if 'resistances' in locals() and resistances:
+            filtered_resistances = sorted(resistances, key=lambda x: abs(x - current_price))[:2]
 
-        # supports / resistances müssen vorher existieren!
-        if "supports" in locals():
-            filtered_supports = [
-                s for s in supports
-                if abs(s - current_price) < price_range * 0.3
-            ][:2]
+# Support / Resistance Labels
+for s in filtered_supports:
+    price_items.append((s, f"S: {s:.2f}"))
+for r in filtered_resistances:
+    price_items.append((r, f"R: {r:.2f}"))
 
-        if "resistances" in locals():
-            filtered_resistances = [
-                r for r in resistances
-                if abs(r - current_price) < price_range * 0.3
-            ][:2]   
+# stacked labels hinzufügen
+add_stacked_labels(fig, price_items, price_row)
             
 # SUPPORT / RESISTANCE
 for s in filtered_supports:
