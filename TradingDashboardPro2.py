@@ -1441,28 +1441,51 @@ resistances = sorted(resistances, key=lambda x: abs(x - current_price))[:5]
 
 show_score = True
 
+current_row = 1
 
-rows = 1
-titles = ["Price"]
+price_row = current_row
+current_row += 1
 
+# 🔥 Timeline IMMER Row 2
+timeline_row = current_row
+current_row += 1
+
+volume_row = None
+if show_volume:
+    volume_row = current_row
+    current_row += 1
+
+score_row = None
+if show_score:
+    score_row = current_row
+    current_row += 1
+
+rsi_row = None
+if show_rsi:
+    rsi_row = current_row
+    current_row += 1
+
+macd_row = None
+if show_macd:
+    macd_row = current_row
+    current_row += 1
+
+rows = current_row - 1
+
+titles = ["Price", "Timeline"]
 
 if show_volume:
-    rows += 1
     titles.append("Volume")
 
+if show_score:
+    titles.append("Score")
+
 if show_rsi:
-    rows += 1
     titles.append("RSI")
 
 if show_macd:
-    rows += 1
     titles.append("MACD")
-
-if show_score:
-    rows += 1
-    titles.append("Score")
     
-
 # 👉 WICHTIG: größere Hauptchart-Gewichtung
 # Hauptchart = 0.5, Rest gleichmäßig
 if rows == 1:
@@ -1473,13 +1496,9 @@ else:
     small_height = remaining_height / (rows - 1)
     row_heights = [main_height] + [small_height] * (rows - 1)
 
-
 rows = 5  # Price, Volume, Score, Indicator, Timeline
 row_heights = [0.5, 0.15, 0.15, 0.1, 0.1]
 titles = ["Price", "Volume", "Score", "Indicator", "Timeline"]
-
-# Timeline row ist die letzte
-timeline_row = rows
 
 fig = make_subplots(
     rows=rows,
@@ -1491,12 +1510,11 @@ fig = make_subplots(
 )
 
 price_row = 1
-volume_row = 2 if show_volume else None
-score_row = 3 if show_score else None
-rsi_row = 4 if show_rsi else None
-macd_row = 5 if show_macd else None
-timeline_row = 5  # letzte Zeile
-
+timeline_row = 2
+volume_row = 3 if show_volume else None
+score_row = 4 if show_score else None
+rsi_row = 5 if show_rsi else None
+macd_row = 6 if show_macd else None
 
 # -----------------------
 # PRICE
