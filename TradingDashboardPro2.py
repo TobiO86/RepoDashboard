@@ -1460,7 +1460,7 @@ if show_macd:
     rows_map["MACD"] = current_row
     current_row += 1
 
-rows = current_row - 1
+rows = current_row -1
 
 # Subplot-Titel
 for key in ["Volume", "Score", "RSI", "MACD"]:
@@ -1542,10 +1542,6 @@ fig.add_trace(go.Candlestick(
     decreasing_line_color='lightsalmon',
     opacity=0.5
 ),row=price_row, col=1)
-
-fig.add_trace(go.Candlestick(
-    x=df.index, open=df["Open"], high=df["High"], low=df["Low"], close=df["Close"], name="Price"
-))
 
 if not rth_df.empty and "VWAP_RTH" in rth_df.columns and rth_df["VWAP_RTH"].notna().any():
     fig.add_trace(
@@ -1767,6 +1763,9 @@ if show_rsi and rsi_row is not None:
 # -----------------------
 # MACD
 # -----------------------
+
+print("score_row:", score_row, "macd_row:", macd_row, "rows:", rows)
+print("df empty?", df.empty)
 
 if show_macd and macd_row is not None:
     fig.add_trace(
