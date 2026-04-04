@@ -1457,7 +1457,7 @@ titles = ["Price", "Timeline", "Volume", "Score", "RSI", "MACD"]
 # -----------------------
 # Feste Höhen (Summe = 1)
 # -----------------------
-row_heights = [0.55, 0.05, 0.12, 0.12, 0.08, 0.08]  # Price groß, Timeline schmal
+row_heights = [0.5, 0.1, 0.12, 0.12, 0.08, 0.08]
 
 fig = make_subplots(
     rows=rows,
