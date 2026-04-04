@@ -1519,7 +1519,7 @@ fig.add_trace(go.Scatter(
     x=df[df["LongSignal"]].index, y=df[df["LongSignal"]]["Close"],
     mode="markers+text",
     marker=dict(symbol="triangle-up", size=12, color="lime"),
-    text=[i.strftime("%Y-%m-%d %H:%M") for i in df[df["LongSignal"]].index],
+    #text=[i.strftime("%Y-%m-%d %H:%M") for i in df[df["LongSignal"]].index],
     textposition="top center",
     hovertemplate="%{text}<br>Price: %{y}<extra></extra>",
     name="LONG"
@@ -1529,7 +1529,7 @@ fig.add_trace(go.Scatter(
     x=df[df["ShortSignal"]].index, y=df[df["ShortSignal"]]["Close"],
     mode="markers+text",
     marker=dict(symbol="triangle-down", size=12, color="red"),
-    text=[i.strftime("%Y-%m-%d %H:%M") for i in df[df["ShortSignal"]].index],
+    #text=[i.strftime("%Y-%m-%d %H:%M") for i in df[df["ShortSignal"]].index],
     textposition="bottom center",
     hovertemplate="%{text}<br>Price: %{y}<extra></extra>",
     name="SHORT"
