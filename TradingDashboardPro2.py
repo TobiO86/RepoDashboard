@@ -1443,8 +1443,11 @@ show_volume = True
 show_rsi = True
 show_macd = True
 
+# -----------------------
+# Row Mapping fixieren
+# -----------------------
 titles = ["Price", "Timeline"]
-rows_map = {"Price": 1, "Timeline": 2}
+rows_map = {"Price": 1, "Timeline": 2}  # Timeline direkt unter Price
 current_row = 3
 
 if show_volume:
@@ -1462,14 +1465,17 @@ if show_macd:
 
 rows = current_row - 1
 
+# Subplot-Titel
 for key in ["Volume", "Score", "RSI", "MACD"]:
     if key in rows_map:
         titles.append(key)
-# -----------------------
-# FIXED SUBPLOTS DASHBOARD
-# -----------------------
-rows = 6  # Price, Timeline, Volume, Score, RSI, MACD
-row_heights = [0.4, 0.1, 0.15, 0.1, 0.1, 0.15]  # Summe = 1
+
+# Höhen festlegen
+main_height = 0.55        # Price größer
+timeline_height = 0.1     # Timeline direkt unter Price
+remaining_height = 1 - main_height - timeline_height
+small_height = remaining_height / (rows - 2)  # für Volume/Score/RSI/MACD
+row_heights = [main_height, timeline_height] + [small_height]*(rows-2)
 
 fig = make_subplots(
     rows=rows,
@@ -1477,15 +1483,15 @@ fig = make_subplots(
     shared_xaxes=True,
     vertical_spacing=0.03,
     row_heights=row_heights,
-    subplot_titles=["Price", "Timeline", "Volume", "Score", "RSI", "MACD"]
+    subplot_titles=titles
 )
 
-price_row = 1
-timeline_row = 2
-volume_row = 3
-score_row = 4
-rsi_row = 5
-macd_row = 6
+price_row = rows_map["Price"]
+timeline_row = rows_map["Timeline"]
+volume_row = rows_map.get("Volume")
+score_row = rows_map.get("Score")
+rsi_row = rows_map.get("RSI")
+macd_row = rows_map.get("MACD")
 
 # -----------------------
 # PRICE CHART
