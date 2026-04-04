@@ -1550,7 +1550,34 @@ fig.add_trace(go.Scatter(x=df[df["ShortSignal"]].index, y=df[df["ShortSignal"]][
               row=price_row, col=1)
 
 # -----------------------
-# TIMELINE
+# SUPPORT / RESISTANCE LINES
+# -----------------------
+for s in supports:
+    fig.add_hline(
+        y=s,
+        line_dash="dash",
+        line_color="green",
+        row=price_row,
+        col=1,
+        annotation_text=f"S {s:.2f}",
+        annotation_position="bottom left",
+        annotation_font_color="green"
+    )
+
+for r in resistances:
+    fig.add_hline(
+        y=r,
+        line_dash="dash",
+        line_color="red",
+        row=price_row,
+        col=1,
+        annotation_text=f"R {r:.2f}",
+        annotation_position="top left",
+        annotation_font_color="red"
+    )
+
+# -----------------------
+# TIMELINE (Datum + Uhrzeit)
 # -----------------------
 session_colors = {"PREMARKET":"lightblue","RTH":"white","AFTERHOURS":"lightcoral"}
 fig.add_trace(go.Scatter(
@@ -1558,7 +1585,7 @@ fig.add_trace(go.Scatter(
     y=[0]*len(df),
     mode="markers",
     marker=dict(color=[session_colors[s] for s in df["Session"]], size=6),
-    text=[i.strftime("%Y-%m-%d %H:%M") for i in df.index],
+    text=[f"{i.strftime('%Y-%m-%d %H:%M')}" for i in df.index],  # Datum + Uhrzeit
     hoverinfo="text",
     showlegend=False
 ), row=timeline_row, col=1)
