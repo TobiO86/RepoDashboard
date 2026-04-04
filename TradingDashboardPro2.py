@@ -1554,13 +1554,10 @@ for sig, marker, col_name in [(df.get("LongSignal"), "triangle-up", "LONG"), (df
         ), row=price_row, col=1)
 
 # -----------------------
-# TIMELINE
-# -----------------------
-# -----------------------
-# TIMELINE MIT DATUM/UHRZEIT UND SESSION-FARBEN
+# TIMELINE UNTER PRICE
 # -----------------------
 if "Session" in df.columns:
-    # Session-Y-Werte (kleiner Versatz für Sichtbarkeit)
+    # Kleine Y-Versätze nur für Sichtbarkeit
     session_y = df['Session'].map({"PREMARKET": 1, "RTH": 2, "AFTERHOURS": 3})
     
     fig.add_trace(go.Scatter(
@@ -1569,15 +1566,15 @@ if "Session" in df.columns:
         mode='markers',
         marker=dict(
             color=[session_colors.get(s, "white") for s in df['Session']],
-            size=8,
+            size=10,
             symbol="square"
         ),
         showlegend=False,
         hoverinfo="text",
-        text=df['Session']
+        text=[f"{s} | {t.strftime('%H:%M %d-%m')}" for s, t in zip(df['Session'], df.index)]
     ), row=timeline_row, col=1)
 
-    # Y-Achse für Timeline anpassen
+    # Y-Achse für kleine Timeline
     fig.update_yaxes(
         tickvals=[1, 2, 3],
         ticktext=["PREMARKET", "RTH", "AFTERHOURS"],
@@ -1586,10 +1583,11 @@ if "Session" in df.columns:
         showgrid=False
     )
 
-    # X-Achse formatieren für Datum/Uhrzeit
+    # X-Achse direkt unter Price chart formatieren für Datum/Uhrzeit
     fig.update_xaxes(
         tickformat="%H:%M\n%d-%m",
-        row=timeline_row, col=1
+        row=timeline_row, col=1,
+        showticklabels=True
     )
 
 # -----------------------
