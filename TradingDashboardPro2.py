@@ -1469,7 +1469,7 @@ if show_macd:
     macd_row = current_row
     current_row += 1
 
-rows = current_row - 1
+#rows = current_row - 1
 
 titles = ["Price", "Timeline"]
 
