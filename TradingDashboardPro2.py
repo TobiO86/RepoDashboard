@@ -1635,7 +1635,8 @@ for r in filtered_resistances:
 # -----------------------
 # LAYOUT
 # -----------------------
-height = 400 + (rows * 250)
+num_rows = 6  # Price, Timeline, Volume, Score, RSI, MACD
+height = 400 + (num_rows * 250)
 fig.update_layout(template="plotly_dark", paper_bgcolor="#0e1117", plot_bgcolor="#0e1117",
                   font=dict(color="#e6e6e6"), hovermode="x unified", xaxis_rangeslider_visible=False,
                   uirevision="constant", height=height)
