@@ -1588,15 +1588,21 @@ fig.update_layout(
     plot_bgcolor="#0e1117",
     font=dict(color="#e6e6e6"),
     hovermode="x unified",
-    xaxis_rangeslider_visible=False
+    xaxis_rangeslider_visible=False,
+    dragmode="pan",
+    uirevision="fixed"
 )
 
 # X-Achse NUR beim Price Chart anzeigen
 for i in range(1, rows+1):
     if i == price_row:
-        fig.update_xaxes(showticklabels=True, row=i, col=1)
+        fig.update_xaxes(showticklabels=True, showspikes=True, spikemode="across", row=i, col=1)
+        fig.update_yaxes(showspikes=True)
     else:
-        fig.update_xaxes(showticklabels=False, row=i, col=1)  
+        fig.update_xaxes(showticklabels=False, showspikes=True, spikemode="across" row=i, col=1)  
+        fig.update_yaxes(showspikes=True)
+        
+        
 st.markdown("""
 <style>
 
@@ -1668,7 +1674,14 @@ section[data-testid="stSidebar"] div[data-baseweb="select"] span {
 </style>
 """, unsafe_allow_html=True)
 
-st.plotly_chart(fig, use_container_width=True)
+st.plotly_chart(fig, use_container_width=True,
+        config={
+        "scrollZoom": True,   # 🔥 Gamechanger
+        "displaylogo": False,
+        "modeBarButtonsToRemove": [
+            "zoom2d", "lasso2d", "select2d"
+        ]
+    })
 
 # -----------------------
 # ALERT / SIGNAL OUTPUT
