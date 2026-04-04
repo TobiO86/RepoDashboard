@@ -1491,13 +1491,6 @@ fig = make_subplots(
     subplot_titles=titles
 )
 
-price_row = 1
-timeline_row = 2
-volume_row = 3 if show_volume else None
-score_row = 4 if show_score else None
-rsi_row = 5 if show_rsi else None
-macd_row = 6 if show_macd else None
-
 # -----------------------
 # PRICE
 # -----------------------
