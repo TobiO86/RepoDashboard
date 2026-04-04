@@ -1466,10 +1466,19 @@ for key in ["Volume", "Score", "RSI", "MACD"]:
     if key in rows_map:
         titles.append(key)
 
-main_height = 0.5
-remaining_height = 1 - main_height
-small_height = remaining_height / (rows - 1)
-row_heights = [main_height] + [small_height]*(rows-1)
+row_heights = []
+
+# Price Chart groß
+row_heights.append(0.4)
+
+# Timeline mittel
+row_heights.append(0.1)
+
+# Rest dynamisch, gleichmäßig auf kleine Indikatoren verteilen
+num_small = rows - 2
+if num_small > 0:
+    small_height = 0.5 / num_small
+    row_heights += [small_height]*num_small
 
 fig = make_subplots(
     rows=rows,
