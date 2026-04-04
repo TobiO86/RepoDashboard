@@ -1608,7 +1608,16 @@ if show_score and score_row:
         if col in df.columns:
             fig.add_trace(go.Scatter(x=df.index, y=df[col], name=name, line=dict(width=1, dash="dot") if "Score" in name else None),
                           row=score_row, col=1)
-    fig.add_hline(y=5, line_dash="dash", row=score_row, col=1)
+    fig.add_shape(
+    type="line",
+    x0=df.index[0],
+    x1=df.index[-1],
+    y0=5,
+    y1=5,
+    line=dict(dash="dash", color="yellow"),
+    xref="x",
+    yref=f"y{score_row}"
+)
     fig.update_yaxes(range=[0,8], row=score_row, col=1)
 
 # -----------------------
@@ -1616,8 +1625,26 @@ if show_score and score_row:
 # -----------------------
 if show_rsi and rsi_row and "RSI" in df.columns:
     fig.add_trace(go.Scatter(x=df.index, y=df["RSI"], name="RSI"), row=rsi_row, col=1)
-    fig.add_hline(y=70, line_dash="dot", row=rsi_row, col=1)
-    fig.add_hline(y=30, line_dash="dot", row=rsi_row, col=1)
+    fig.add_shape(
+        type="line",
+        x0=df.index[0],
+        x1=df.index[-1],
+        y0=70,
+        y1=70,
+        line=dict(dash="dot", color="red"),
+        xref="x",
+        yref=f"y{rsi_row}"
+    )
+    fig.add_shape(
+        type="line",
+        x0=df.index[0],
+        x1=df.index[-1],
+        y0=30,
+        y1=30,
+        line=dict(dash="dot", color="green"),
+        xref="x",
+        yref=f"y{rsi_row}"
+    )
 
 # -----------------------
 # MACD
@@ -1635,10 +1662,13 @@ filtered_supports = [s for s in supports if abs(s - current_price) < price_range
 filtered_resistances = [r for r in resistances if abs(r - current_price) < price_range * 0.3][:2]
 
 for s in filtered_supports:
-    fig.add_hline(y=s, line_dash="dot", line_color="green", line_width=1.5, opacity=0.4, row=price_row, col=1)
+    fig.add_shape(type="line", x0=df.index[0], x1=df.index[-1], y0=s, y1=s,
+                  line=dict(dash="dot", color="green", width=1.5),
+                  xref="x", yref=f"y{price_row}")
 for r in filtered_resistances:
-    fig.add_hline(y=r, line_dash="dot", line_color="red", line_width=1.5, opacity=0.4, row=price_row, col=1)
-
+    fig.add_shape(type="line", x0=df.index[0], x1=df.index[-1], y0=r, y1=r,
+                  line=dict(dash="dot", color="red", width=1.5),
+                  xref="x", yref=f"y{price_row}")
 # -----------------------
 # LAYOUT
 # -----------------------
