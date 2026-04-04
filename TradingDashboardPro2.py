@@ -1458,8 +1458,8 @@ macd_row = 6
 titles = ["Price", "Timeline", "Volume", "Score", "RSI", "MACD"]
 
 # Row heights
-row_heights = [0.5, 0.05, 0.15, 0.1, 0.1, 0.1]  # Beispiel: Price groß, Timeline klein, andere mittel
-
+row_heights = [0.5, 0.07, 0.15, 0.1, 0.09, 0.09]
+row_heights = [h/sum(row_heights) for h in row_heights]
 
 # Create figure
 fig = make_subplots(
