@@ -1642,14 +1642,6 @@ for r in filtered_resistances:
 # stacked labels hinzufügen
 add_stacked_labels(fig, price_items, price_row)
             
-# SUPPORT / RESISTANCE
-for s in filtered_supports:
-    price_items.append((s, f"S: {s:.2f}"))
-
-for r in filtered_resistances:
-    price_items.append((r, f"R: {r:.2f}"))
-
-add_stacked_labels(fig, price_items, price_row)
 # -----------------------
 # TIMELINE UNTER PRICE
 # -----------------------
