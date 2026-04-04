@@ -377,18 +377,17 @@ def auto_period_interval(period, interval):
         "1d": ["1y", "max"]
     }
 
-    # Falls period nicht kompatibel mit interval
-    if interval in valid_map:
-        if period not in valid_map[interval]:
-            # fallback = erstes gültiges period
-            period = valid_map[interval][0]
+    interval = st.sidebar.selectbox(
+        "Timeframe", 
+        list(valid_map.keys()),
+        key="interval_select"
+    )
 
-    # Optional: falls interval nicht passt zu period, anpassen
-    for key, periods in valid_map.items():
-        if period in periods:
-            if interval not in valid_map[key]:
-                interval = key  # erstes gültiges Intervall
-            break
+    period = st.sidebar.selectbox(
+        "Period",
+        valid_map[interval],   # 👈 nur gültige anzeigen
+        key="period_select"
+    )
 
     return period, interval
 
@@ -396,20 +395,9 @@ show_volume = st.sidebar.checkbox("Volume", True)
 show_rsi = st.sidebar.checkbox("RSI", True)
 show_macd = st.sidebar.checkbox("MACD", True)
 
-period = st.sidebar.selectbox(
-    "Period", 
-    ["1d", "5d", "1mo", "3mo", "6mo", "1y"],  # 1d hinzugefügt
-    key="period_select"
-)
+# Aufruf Autoperiod:
+period, interval = auto_period_interval()
 
-interval = st.sidebar.selectbox(
-    "Timeframe", 
-    ["1m","5m","15m","1h","4h","1d"],
-    key="interval_select"
-)
-
-# Nutzung:
-period, interval = auto_period_interval(period, interval)
 st.sidebar.caption(f"Aktive Kombi: {interval} / {period}")
 
 # -----------------------
