@@ -1441,23 +1441,19 @@ show_rsi = True
 show_macd = True
 
 # -----------------------
-# FIXED ROW MAPPING
+# SUBPLOTS
 # -----------------------
 rows_map = {
     "Price": 1,
-    "Timeline": 2,
-    "Volume": 3,
-    "Score": 4,
-    "RSI": 5,
-    "MACD": 6
+    "Volume": 2,
+    "Score": 3,
+    "RSI": 4,
+    "MACD": 5
 }
-rows = 6
-titles = ["Price", "Timeline", "Volume", "Score", "RSI", "MACD"]
+rows = 5
+titles = ["Price", "Volume", "Score", "RSI", "MACD"]
 
-# -----------------------
-# Feste Höhen (Summe ≈1)
-# -----------------------
-row_heights = [0.5, 0.1, 0.12, 0.12, 0.08, 0.08]  # Timeline etwas größer
+row_heights = [0.55, 0.15, 0.12, 0.08, 0.1]  # Price groß, Volume sichtbar, andere klein
 
 fig = make_subplots(
     rows=rows,
@@ -1469,59 +1465,47 @@ fig = make_subplots(
 )
 
 price_row = rows_map["Price"]
-timeline_row = rows_map["Timeline"]
 volume_row = rows_map["Volume"]
 score_row = rows_map["Score"]
 rsi_row = rows_map["RSI"]
 macd_row = rows_map["MACD"]
 
-
 # -----------------------
 # PRICE CHART
 # -----------------------
-rth_df = df[df["Session"]=="RTH"]
-pre_df = df[df["Session"]=="PREMARKET"]
-ah_df  = df[df["Session"]=="AFTERHOURS"]
+for sess, col in [("RTH", df[df["Session"]=="RTH"]),
+                  ("PRE", df[df["Session"]=="PREMARKET"]),
+                  ("AH", df[df["Session"]=="AFTERHOURS"])]:
+    fig.add_trace(go.Candlestick(
+        x=col.index, open=col["Open"], high=col["High"],
+        low=col["Low"], close=col["Close"], name=sess,
+        increasing_line_color='green' if sess=="RTH" else 'lightgreen',
+        decreasing_line_color='red' if sess=="RTH" else 'lightcoral',
+        opacity=1 if sess=="RTH" else 0.5
+    ), row=price_row, col=1)
 
-# Candles
-fig.add_trace(go.Candlestick(
-    x=rth_df.index, open=rth_df["Open"], high=rth_df["High"],
-    low=rth_df["Low"], close=rth_df["Close"], name="RTH",
-    increasing_line_color='green', decreasing_line_color='red'
-), row=price_row, col=1)
-
-fig.add_trace(go.Candlestick(
-    x=pre_df.index, open=pre_df["Open"], high=pre_df["High"],
-    low=pre_df["Low"], close=pre_df["Close"], name="PRE",
-    increasing_line_color='lightgreen', decreasing_line_color='lightcoral',
-    opacity=0.5
-), row=price_row, col=1)
-
-fig.add_trace(go.Candlestick(
-    x=ah_df.index, open=ah_df["Open"], high=ah_df["High"],
-    low=ah_df["Low"], close=ah_df["Close"], name="AH",
-    increasing_line_color='lightblue', decreasing_line_color='lightsalmon',
-    opacity=0.5
-), row=price_row, col=1)
-
-# VWAP Linien
-for sess, col, color in [("RTH", rth_df, "yellow"), ("PRE", pre_df, "orange"), ("AH", ah_df, "purple")]:
+# VWAP
+for sess, col, color in [("RTH", df[df["Session"]=="RTH"], "yellow"),
+                         ("PRE", df[df["Session"]=="PREMARKET"], "orange"),
+                         ("AH", df[df["Session"]=="AFTERHOURS"], "purple")]:
     col_name = f"VWAP_{sess}"
     if col_name in col.columns:
         fig.add_trace(go.Scatter(
             x=col.index, y=col[col_name], line=dict(color=color, width=3), name=col_name
         ), row=price_row, col=1)
 
-# EMA Linien
+# EMA
 for ema in ["EMA20","EMA50","EMA200"]:
     if ema in df.columns:
         fig.add_trace(go.Scatter(x=df.index, y=df[ema], name=ema), row=price_row, col=1)
 
 # Bollinger / Keltner
 for bb in ["BB_UPPER","BB_MID","BB_LOWER"]:
-    dash = "dot" if bb != "BB_MID" else None
     if bb in df.columns:
-        fig.add_trace(go.Scatter(x=df.index, y=df[bb], name=bb, line=dict(width=1, dash=dash)), row=price_row, col=1)
+        dash = "dot" if bb != "BB_MID" else None
+        fig.add_trace(go.Scatter(
+            x=df.index, y=df[bb], name=bb, line=dict(width=1, dash=dash)
+        ), row=price_row, col=1)
 
 for kc in ["VWAP_upper2","VWAP_lower2","KC_UPPER","KC_MID","KC_LOWER"]:
     if kc in df.columns:
@@ -1531,55 +1515,35 @@ for kc in ["VWAP_upper2","VWAP_lower2","KC_UPPER","KC_MID","KC_LOWER"]:
         fig.add_trace(go.Scatter(x=df.index, y=df[kc], name=kc, **line_kwargs), row=price_row, col=1)
 
 # Signals
-fig.add_trace(go.Scatter(x=df[df["LongSignal"]].index, y=df[df["LongSignal"]]["Close"],
-                         mode="markers", marker=dict(symbol="triangle-up", size=12), name="LONG"),
-              row=price_row, col=1)
-fig.add_trace(go.Scatter(x=df[df["ShortSignal"]].index, y=df[df["ShortSignal"]]["Close"],
-                         mode="markers", marker=dict(symbol="triangle-down", size=12), name="SHORT"),
-              row=price_row, col=1)
-
-# -----------------------
-# SUPPORT / RESISTANCE LINES
-# -----------------------
-for s in supports:
-    fig.add_hline(
-        y=s,
-        line_dash="dash",
-        line_color="green",
-        row=price_row,
-        col=1,
-        annotation_text=f"S {s:.2f}",
-        annotation_position="bottom left",
-        annotation_font_color="green"
-    )
-
-for r in resistances:
-    fig.add_hline(
-        y=r,
-        line_dash="dash",
-        line_color="red",
-        row=price_row,
-        col=1,
-        annotation_text=f"R {r:.2f}",
-        annotation_position="top left",
-        annotation_font_color="red"
-    )
-
-
-# -----------------------
-# TIMELINE (Datum + Uhrzeit)
-# -----------------------
-session_colors = {"PREMARKET":"lightblue","RTH":"white","AFTERHOURS":"lightcoral"}
 fig.add_trace(go.Scatter(
-    x=df.index,
-    y=[0.5]*len(df),  # mittig in der Row
-    mode="markers",
-    marker=dict(color=[session_colors[s] for s in df["Session"]], size=6),
-    text=[i.strftime('%Y-%m-%d %H:%M') for i in df.index],
-    hoverinfo="text",
-    showlegend=False
-), row=timeline_row, col=1)
-fig.update_yaxes(visible=False, row=timeline_row, col=1)
+    x=df[df["LongSignal"]].index, y=df[df["LongSignal"]]["Close"],
+    mode="markers+text",
+    marker=dict(symbol="triangle-up", size=12, color="lime"),
+    text=[i.strftime("%Y-%m-%d %H:%M") for i in df[df["LongSignal"]].index],
+    textposition="top center",
+    hovertemplate="%{text}<br>Price: %{y}<extra></extra>",
+    name="LONG"
+), row=price_row, col=1)
+
+fig.add_trace(go.Scatter(
+    x=df[df["ShortSignal"]].index, y=df[df["ShortSignal"]]["Close"],
+    mode="markers+text",
+    marker=dict(symbol="triangle-down", size=12, color="red"),
+    text=[i.strftime("%Y-%m-%d %H:%M") for i in df[df["ShortSignal"]].index],
+    textposition="bottom center",
+    hovertemplate="%{text}<br>Price: %{y}<extra></extra>",
+    name="SHORT"
+), row=price_row, col=1)
+
+# Support / Resistance
+for s in supports:
+    fig.add_hline(y=s, line_dash="dash", line_color="green",
+                  row=price_row, col=1,
+                  annotation_text=f"S {s:.2f}", annotation_position="bottom left")
+for r in resistances:
+    fig.add_hline(y=r, line_dash="dash", line_color="red",
+                  row=price_row, col=1,
+                  annotation_text=f"R {r:.2f}", annotation_position="top left")
 
 # -----------------------
 # VOLUME
@@ -1591,8 +1555,10 @@ if "Volume" in df.columns:
 # SCORE
 # -----------------------
 if "LongScore" in df.columns and "ShortScore" in df.columns:
-    fig.add_trace(go.Scatter(x=df.index, y=df["LongScore"], name="Long Score", line=dict(width=1, dash="dot")), row=score_row, col=1)
-    fig.add_trace(go.Scatter(x=df.index, y=df["ShortScore"], name="Short Score", line=dict(width=1, dash="dot")), row=score_row, col=1)
+    fig.add_trace(go.Scatter(x=df.index, y=df["LongScore"], name="Long Score",
+                             line=dict(width=1, dash="dot")), row=score_row, col=1)
+    fig.add_trace(go.Scatter(x=df.index, y=df["ShortScore"], name="Short Score",
+                             line=dict(width=1, dash="dot")), row=score_row, col=1)
     fig.add_hline(y=5, line_dash="dash", row=score_row, col=1)
     fig.update_yaxes(range=[0,8], row=score_row, col=1)
 
@@ -1628,7 +1594,6 @@ fig.update_layout(
 for i in range(1, rows+1):
     fig.update_xaxes(showgrid=False, color="#e6e6e6", row=i, col=1)
     fig.update_yaxes(showgrid=True, gridcolor="#1f2937", color="#e6e6e6", row=i, col=1)
-
     
 st.markdown("""
 <style>
