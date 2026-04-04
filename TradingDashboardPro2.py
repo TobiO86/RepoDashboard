@@ -1556,26 +1556,18 @@ for sig, marker, col_name in [(df.get("LongSignal"), "triangle-up", "LONG"), (df
 # -----------------------
 # TIMELINE
 # -----------------------
-if "Session" in df.columns:
-    fig.add_trace(go.Scatter(
-        x=df.index,
-        y=[0]*len(df),
-        mode='markers',
-        marker=dict(
-            color=[session_colors.get(s, "white") for s in df['Session']],
-            size=6
-        ),
-        showlegend=False,
-        hoverinfo="x+text",
-        text=df['Session']
-    ), row=timeline_row, col=1)
-    fig.update_yaxes(visible=False, row=timeline_row, col=1)
+
+fig.add_trace(go.Scatter(x=df.index, y=[0]*len(df), mode='markers', name="Timeline"),
+            row=timeline_row, col=1)
 
 # -----------------------
 # VOLUME
 # -----------------------
-if show_volume and volume_row and "Volume" in df.columns:
-    fig.add_trace(go.Bar(x=df.index, y=df["Volume"], name="Volume"), row=volume_row, col=1)
+
+# Volume
+if "Volume" in df.columns:
+    fig.add_trace(go.Bar(x=df.index, y=df["Volume"], name="Volume"),
+                  row=volume_row, col=1)
     fig.add_annotation(x=df.index[-1], y=df["Volume"].iloc[-1],
                        text=f"Vol {df['Volume'].iloc[-1]:.0f}", showarrow=False,
                        xanchor="left", row=volume_row, col=1, font=dict(size=14))
@@ -1583,11 +1575,11 @@ if show_volume and volume_row and "Volume" in df.columns:
 # -----------------------
 # SCORE
 # -----------------------
-if show_score and score_row:
-    for col, name in [("LongScore", "Long Score"), ("ShortScore", "Short Score"), ("ScoreDelta", "Delta"), ("Spread", "Spread (US-EU)")]:
-        if col in df.columns:
-            fig.add_trace(go.Scatter(x=df.index, y=df[col], name=name, line=dict(width=1, dash="dot") if "Score" in name else None),
-                          row=score_row, col=1)
+for col, name in [("LongScore", "Long Score"), ("ShortScore", "Short Score")]:
+    if col in df.columns:
+        fig.add_trace(go.Scatter(x=df.index, y=df[col], name=name),
+                      row=score_row, col=1)
+        
     fig.add_shape(
     type="line",
     x0=df.index[0],
@@ -1603,17 +1595,9 @@ if show_score and score_row:
 # -----------------------
 # RSI
 # -----------------------
-if show_rsi and rsi_row and "RSI" in df.columns:
-    fig.add_trace(go.Scatter(x=df.index, y=df["RSI"], name="RSI"), row=rsi_row, col=1)
-    fig.add_shape(
-        type="line",
-        x0=df.index[0],
-        x1=df.index[-1],
-        y0=70,
-        y1=70,
-        line=dict(dash="dot", color="red"),
-        xref="x",
-        yref=f"y{rsi_row}"
+if "RSI" in df.columns:
+    fig.add_trace(go.Scatter(x=df.index, y=df["RSI"], name="RSI"),
+                  row=rsi_row, col=1
     )
     fig.add_shape(
         type="line",
@@ -1629,11 +1613,10 @@ if show_rsi and rsi_row and "RSI" in df.columns:
 # -----------------------
 # MACD
 # -----------------------
-if show_macd and macd_row and all(c in df.columns for c in ["MACD","MACD_signal","MACD_hist"]):
-    fig.add_trace(go.Scatter(x=df.index, y=df["MACD"], name="MACD"), row=macd_row, col=1)
-    fig.add_trace(go.Scatter(x=df.index, y=df["MACD_signal"], name="Signal"), row=macd_row, col=1)
-    fig.add_trace(go.Bar(x=df.index, y=df["MACD_hist"], name="Histogram"), row=macd_row, col=1)
-
+for col, name in [("MACD", "MACD"), ("MACD_signal", "Signal"), ("MACD_hist", "Histogram")]:
+    if col in df.columns:
+        fig.add_trace(go.Scatter(x=df.index, y=df[col], name=name),
+                      row=macd_row, col=1)
 # -----------------------
 # SUPPORT / RESISTANCE
 # -----------------------
