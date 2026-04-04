@@ -1434,9 +1434,6 @@ resistances = sorted(resistances, key=lambda x: abs(x - current_price))[:5]
 # -----------------------
 # SUBPLOTS (FIXED UI)
 # -----------------------
-# -----------------------
-# SUBPLOTS (FIXED UI)
-# -----------------------
 
 show_score = True
 show_volume = True
@@ -1444,38 +1441,23 @@ show_rsi = True
 show_macd = True
 
 # -----------------------
-# Row Mapping fixieren
+# Statische Reihen & Titel
 # -----------------------
-titles = ["Price", "Timeline"]
-rows_map = {"Price": 1, "Timeline": 2}  # Timeline direkt unter Price
-current_row = 3
+rows_map = {
+    "Price": 1,
+    "Timeline": 2,
+    "Volume": 3,
+    "Score": 4,
+    "RSI": 5,
+    "MACD": 6
+}
+rows = 6
+titles = ["Price", "Timeline", "Volume", "Score", "RSI", "MACD"]
 
-if show_volume:
-    rows_map["Volume"] = current_row
-    current_row += 1
-if show_score:
-    rows_map["Score"] = current_row
-    current_row += 1
-if show_rsi:
-    rows_map["RSI"] = current_row
-    current_row += 1
-if show_macd:
-    rows_map["MACD"] = current_row
-    current_row += 1
-
-rows = current_row - 1
-
-# Subplot-Titel
-for key in ["Volume", "Score", "RSI", "MACD"]:
-    if key in rows_map:
-        titles.append(key)
-
-# Höhen festlegen
-main_height = 0.55        # Price größer
-timeline_height = 0.1     # Timeline direkt unter Price
-remaining_height = 1 - main_height - timeline_height
-small_height = remaining_height / (rows - 2)  # für Volume/Score/RSI/MACD
-row_heights = [main_height, timeline_height] + [small_height]*(rows-2)
+# -----------------------
+# Feste Höhen
+# -----------------------
+row_heights = [0.55, 0.1, 0.15, 0.15, 0.15, 0.15]  # Summe ≈1
 
 fig = make_subplots(
     rows=rows,
@@ -1488,10 +1470,10 @@ fig = make_subplots(
 
 price_row = rows_map["Price"]
 timeline_row = rows_map["Timeline"]
-volume_row = rows_map.get("Volume")
-score_row = rows_map.get("Score")
-rsi_row = rows_map.get("RSI")
-macd_row = rows_map.get("MACD")
+volume_row = rows_map["Volume"]
+score_row = rows_map["Score"]
+rsi_row = rows_map["RSI"]
+macd_row = rows_map["MACD"]
 
 # -----------------------
 # PRICE CHART
