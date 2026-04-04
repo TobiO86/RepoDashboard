@@ -1431,214 +1431,312 @@ current_price = df["Close"].iloc[-1]
 supports = sorted(supports, key=lambda x: abs(x - current_price))[:5]
 resistances = sorted(resistances, key=lambda x: abs(x - current_price))[:5]
 
-# -----------------------
-# Subplot Setup
-# -----------------------
-show_score = True
-show_volume = True
-show_rsi = True
-show_macd = True
+def plot_trading_dashboard(df, supports, resistances, current_price, key="main_plot"):
+    """
+    Vollständiger Trading-Dashboard Plot mit allen Subplots:
+    Price, Timeline, Volume, Score, RSI, MACD
+    """
+    # -----------------------
+    # Sichtbare Indikatoren
+    # -----------------------
+    show_score = True
+    show_volume = True
+    show_rsi = True
+    show_macd = True
 
-price_row = 1
-timeline_row = 2
-volume_row = 3
-score_row = 4
-rsi_row = 5
-macd_row = 6
-# -----------------------
-# Session DataFrames & Labels
-# -----------------------
-rth_df = df[df["Session"]=="RTH"]
-pre_df = df[df["Session"]=="PREMARKET"]
-ah_df  = df[df["Session"]=="AFTERHOURS"]
+    # -----------------------
+    # Basis Rows
+    # -----------------------
+    titles = ["Price", "Timeline"]
+    rows_map = {"Price": 1, "Timeline": 2}
+    current_row = 3
 
-def add_stacked_labels(df):
-    labels = []
-    for i, row in df.iterrows():
-        text = ""
-        if row.get("LongSignal", False):
-            text += "LONG "
-        if row.get("ShortSignal", False):
-            text += "SHORT "
-        if row.get("VWAP_Reclaim_Long", False):
-            text += "VWAP↑ "
-        if row.get("VWAP_Reclaim_Short", False):
-            text += "VWAP↓ "
-        labels.append(text.strip())
-    df["StackedLabels"] = labels
-    return df
+    if show_volume:
+        rows_map["Volume"] = current_row
+        current_row += 1
+    if show_score:
+        rows_map["Score"] = current_row
+        current_row += 1
+    if show_rsi:
+        rows_map["RSI"] = current_row
+        current_row += 1
+    if show_macd:
+        rows_map["MACD"] = current_row
+        current_row += 1
 
-def filtered_supports(df):
-    return df[(df.get("KC_Below", False)) | (df.get("KC_Above", False))]
+    rows = current_row - 1
 
-rth_df = add_stacked_labels(rth_df)
-pre_df = add_stacked_labels(pre_df)
-ah_df  = add_stacked_labels(ah_df)
+    # Subplot-Titel
+    for key_name in ["Volume", "Score", "RSI", "MACD"]:
+        if key_name in rows_map:
+            titles.append(key_name)
 
-supports_rth = filtered_supports(rth_df)
-supports_pre = filtered_supports(pre_df)
-supports_ah  = filtered_supports(ah_df)
+    # Row Heights
+    main_height = 0.5
+    remaining_height = 1 - main_height
+    small_height = remaining_height / (rows - 1)
+    row_heights = [main_height] + [small_height] * (rows - 1)
 
-# -----------------------
-# PLOTLY CHART
-# -----------------------
-import plotly.graph_objects as go
+    fig = make_subplots(
+        rows=rows,
+        cols=1,
+        shared_xaxes=True,
+        vertical_spacing=0.03,
+        row_heights=row_heights,
+        subplot_titles=titles
+    )
 
-fig = go.Figure()
+    # Row-Zuweisungen
+    price_row = rows_map["Price"]
+    timeline_row = rows_map["Timeline"]
+    volume_row = rows_map.get("Volume")
+    score_row = rows_map.get("Score")
+    rsi_row = rows_map.get("RSI")
+    macd_row = rows_map.get("MACD")
 
-# Farbcodes
-colors = {
-    "RTH": "rgba(0,0,0,1)",       # normale Candles schwarz
-    "PREMARKET": "rgba(0,0,255,0.3)", # halbtransparent blau
-    "AFTERHOURS": "rgba(255,0,0,0.3)" # halbtransparent rot
-}
+    # -----------------------
+    # PRICE & SESSIONS
+    # -----------------------
+    rth_df = df[df["Session"] == "RTH"]
+    pre_df = df[df["Session"] == "PREMARKET"]
+    ah_df  = df[df["Session"] == "AFTERHOURS"]
 
-# Candles
-for session in ["PREMARKET", "RTH", "AFTERHOURS"]:
-    df_sess = df[df["Session"] == session]
-    if not df_sess.empty:
-        fig.add_trace(go.Candlestick(
-            x=df_sess.index,
-            open=df_sess["Open"],
-            high=df_sess["High"],
-            low=df_sess["Low"],
-            close=df_sess["Close"],
-            name=session,
-            increasing_line_color=colors[session],
-            decreasing_line_color=colors[session],
-            showlegend=False
-        ))
+    # Candlesticks
+    fig.add_trace(go.Candlestick(
+        x=rth_df.index, open=rth_df["Open"], high=rth_df["High"],
+        low=rth_df["Low"], close=rth_df["Close"],
+        name="RTH", increasing_line_color='green', decreasing_line_color='red'
+    ), row=price_row, col=1)
 
-# VWAP + BB + KC
-vwap_bb_cols = ["VWAP_RTH","VWAP_upper2","VWAP_lower2","BB_UPPER","BB_LOWER","BB_MID","KC_UPPER","KC_LOWER"]
-for col in vwap_bb_cols:
-    if col in df.columns:
+    fig.add_trace(go.Candlestick(
+        x=pre_df.index, open=pre_df["Open"], high=pre_df["High"],
+        low=pre_df["Low"], close=pre_df["Close"],
+        name="PRE", increasing_line_color='lightgreen',
+        decreasing_line_color='lightcoral', opacity=0.5
+    ), row=price_row, col=1)
+
+    fig.add_trace(go.Candlestick(
+        x=ah_df.index, open=ah_df["Open"], high=ah_df["High"],
+        low=ah_df["Low"], close=ah_df["Close"],
+        name="AH", increasing_line_color='lightblue',
+        decreasing_line_color='lightsalmon', opacity=0.5
+    ), row=price_row, col=1)
+
+    # VWAPs
+    if not rth_df.empty and "VWAP_RTH" in rth_df.columns:
         fig.add_trace(go.Scatter(
-            x=df.index,
-            y=df[col],
-            mode="lines",
-            line=dict(width=1.5),
-            name=col
-        ))
+            x=rth_df.index, y=rth_df["VWAP_RTH"], name="VWAP_RTH",
+            line=dict(width=3, color="yellow")
+        ), row=price_row, col=1)
 
-# -----------------------
-# STACKED LABELS
-# -----------------------
-label_offset = 0
-label_spacing = df["Close"].max() * 0.01
+    if not pre_df.empty and "VWAP_PRE" in pre_df.columns:
+        fig.add_trace(go.Scatter(
+            x=pre_df.index, y=pre_df["VWAP_PRE"], name="VWAP_PRE",
+            line=dict(width=3, color="orange")
+        ), row=price_row, col=1)
 
-for i, row in df.iterrows():
-    labels = []
-    if row.get("LongSignal"):
-        labels.append("LONG")
-    if row.get("ShortSignal"):
-        labels.append("SHORT")
-    if row.get("VWAP_Reclaim_Long"):
-        labels.append("VWAP↑")
-    if row.get("VWAP_Reclaim_Short"):
-        labels.append("VWAP↓")
+    if not ah_df.empty and "VWAP_AH" in ah_df.columns:
+        fig.add_trace(go.Scatter(
+            x=ah_df.index, y=ah_df["VWAP_AH"], name="VWAP_AH",
+            line=dict(width=3, color="purple")
+        ), row=price_row, col=1)
 
-    for lbl in labels:
-        fig.add_annotation(
-            x=i,
-            y=row["High"] + label_offset,
-            text=lbl,
-            showarrow=True,
-            arrowhead=2,
-            ax=0,
-            ay=-15,
-            bgcolor="yellow" if lbl in ["LONG","VWAP↑"] else "red",
-            opacity=0.8,
-            font=dict(size=10)
-        )
-        label_offset += label_spacing
-    label_offset = 0
+    # EMA / VWAP Channels / Keltner
+    for col_name in ["EMA20", "EMA50", "VWAP_upper2", "VWAP_lower2", "KC_UPPER", "KC_MID", "KC_LOWER"]:
+        if col_name in df.columns:
+            fig.add_trace(go.Scatter(
+                x=df.index, y=df[col_name], name=col_name
+            ), row=price_row, col=1)
 
-# Layout
-fig.update_layout(
-    title=f"{symbol} Intraday Chart",
-    xaxis_title="Time",
-    yaxis_title="Price",
-    xaxis_rangeslider_visible=False,
-    template="plotly_white",
-    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
-)
+    # Timeline Session Markers
+    session_colors = {"PREMARKET": "lightblue", "RTH": "white", "AFTERHOURS": "lightcoral"}
+    fig.add_trace(go.Scatter(
+        x=df.index,
+        y=[0]*len(df),
+        mode='markers',
+        marker=dict(color=[session_colors[s] for s in df['Session']], size=6),
+        showlegend=False,
+        hoverinfo="x+text",
+        text=df['Session']
+    ), row=timeline_row, col=1)
+    fig.update_yaxes(visible=False, row=timeline_row, col=1)
 
-st.markdown("""
-<style>
+    # -----------------------
+    # SUPPORT / RESISTANCE
+    # -----------------------
+    price_range = df["High"].max() - df["Low"].min()
+    filtered_supports = [s for s in supports if abs(s - current_price) < price_range * 0.3] or supports[:2]
+    filtered_resistances = [r for r in resistances if abs(r - current_price) < price_range * 0.3] or resistances[:2]
 
-/* -------- GLOBAL DARK MODE -------- */
-html, body, [class*="css"]  {
-    background-color: #0e1117 !important;
-    color: #e6e6e6 !important;
-}
+    for s in filtered_supports:
+        fig.add_hline(y=s, line_dash="dot", line_color="green", line_width=1.5, opacity=0.4, row=price_row, col=1)
+        fig.add_annotation(x=df.index[-1], y=s, text=f"S {s:.0f}", showarrow=False, font=dict(size=14), xanchor="left")
+    for r in filtered_resistances:
+        fig.add_hline(y=r, line_dash="dot", line_color="red", line_width=1.5, opacity=0.4, row=price_row, col=1)
+        fig.add_annotation(x=df.index[-1], y=r, text=f"R {r:.0f}", showarrow=False, font=dict(size=14), xanchor="left")
 
-/* MAIN CONTAINER */
-.stApp {
-    background-color: #0e1117 !important;
-}
+    # -----------------------
+    # BOLLINGER BANDS
+    # -----------------------
+    for col_name, dash in [("BB_UPPER", "dot"), ("BB_LOWER", "dot"), ("BB_MID", "solid")]:
+        if col_name in df.columns:
+            fig.add_trace(go.Scatter(
+                x=df.index, y=df[col_name], name=col_name,
+                connectgaps=False, line=dict(width=1, dash=dash)
+            ), row=price_row, col=1)
 
-/* BLOCK CONTAINER */
-.block-container {
-    background-color: #0e1117 !important;
-}
+    # -----------------------
+    # SIGNALS
+    # -----------------------
+    if "LongSignal" in df.columns:
+        fig.add_trace(go.Scatter(x=df[df["LongSignal"]].index, y=df[df["LongSignal"]]["Close"],
+                                 mode="markers", marker=dict(symbol="triangle-up", size=12),
+                                 name="LONG", connectgaps=False), row=price_row, col=1)
+    if "ShortSignal" in df.columns:
+        fig.add_trace(go.Scatter(x=df[df["ShortSignal"]].index, y=df[df["ShortSignal"]]["Close"],
+                                 mode="markers", marker=dict(symbol="triangle-down", size=12),
+                                 name="SHORT", connectgaps=False), row=price_row, col=1)
 
-/* TEXT FIX */
-h1, h2, h3, h4, h5, h6, p, span, label {
-    color: #e6e6e6 !important;
-}
+    # -----------------------
+    # VOLUME
+    # -----------------------
+    if show_volume and volume_row is not None and "Volume" in df.columns:
+        fig.add_trace(go.Bar(x=df.index, y=df["Volume"], name="Volume"), row=volume_row, col=1)
+        fig.add_annotation(x=df.index[-1], y=df["Volume"].iloc[-1],
+                           text=f"Vol {df['Volume'].iloc[-1]:.0f}", showarrow=False, xanchor="left",
+                           row=volume_row, col=1, font=dict(size=14))
 
-/* SIDEBAR */
-section[data-testid="stSidebar"] {
-    background-color: #111827 !important;
-}
+    # -----------------------
+    # RSI
+    # -----------------------
+    if show_rsi and rsi_row is not None and "RSI" in df.columns:
+        fig.add_trace(go.Scatter(x=df.index, y=df["RSI"], name="RSI"), row=rsi_row, col=1)
+        fig.add_hline(y=70, line_dash="dot", row=rsi_row, col=1)
+        fig.add_hline(y=30, line_dash="dot", row=rsi_row, col=1)
+        fig.add_annotation(x=df.index[-1], y=df["RSI"].iloc[-1],
+                           text=f"RSI {df['RSI'].iloc[-1]:.1f}", showarrow=False, xanchor="left", row=rsi_row, col=1, yshift=20, font=dict(size=14))
 
-section[data-testid="stSidebar"] * {
-    color: #e6e6e6 !important;
-}
+    # -----------------------
+    # MACD
+    # -----------------------
+    if show_macd and macd_row is not None and "MACD" in df.columns:
+        fig.add_trace(go.Scatter(x=df.index, y=df["MACD"], name="MACD"), row=macd_row, col=1)
+        fig.add_trace(go.Scatter(x=df.index, y=df["MACD_signal"], name="Signal"), row=macd_row, col=1)
+        fig.add_trace(go.Bar(x=df.index, y=df["MACD_hist"], name="Histogram"), row=macd_row, col=1)
+        fig.add_annotation(x=df.index[-1], y=df["MACD"].iloc[-1], text=f"MACD {df['MACD'].iloc[-1]:.2f}", showarrow=False, xanchor="left", row=macd_row, col=1, yshift=10)
+        fig.add_annotation(x=df.index[-1], y=df["MACD_signal"].iloc[-1], text=f"Signal {df['MACD_signal'].iloc[-1]:.2f}", showarrow=False, xanchor="left", row=macd_row, col=1, yshift=30)
 
-/* INPUTS */
-input, textarea, div[data-baseweb="select"] {
-    background-color: #1f2937 !important;
-    color: #e6e6e6 !important;
-}
+    # -----------------------
+    # SCORE
+    # -----------------------
+    if show_score and score_row is not None:
+        for col_name, dash in [("LongScore", "dot"), ("ShortScore", "dot"), ("ScoreDelta", "solid"), ("Spread", "solid")]:
+            if col_name in df.columns:
+                fig.add_trace(go.Scatter(x=df.index, y=df[col_name], name=col_name, line=dict(dash=dash)), row=score_row, col=1)
+        fig.add_hline(y=5, line_dash="dash", row=score_row, col=1)
+        fig.update_yaxes(range=[0, 8], row=score_row, col=1)
 
-/* BUTTONS */
-.stButton>button {
-    background-color: #1f2937 !important;
-    color: #e6e6e6 !important;
-    border-radius: 8px;
-}
+    # -----------------------
+    # LAYOUT
+    # -----------------------
+    height = 400 + rows * 250
+    fig.update_layout(
+        template="plotly_dark",
+        paper_bgcolor="#0e1117",
+        plot_bgcolor="#0e1117",
+        font=dict(color="#e6e6e6"),
+        hovermode="x unified",
+        xaxis_rangeslider_visible=False,
+        uirevision="constant",
+        height=height,
+        legend=dict(font=dict(color="#f3f4f6", size=12),
+                    bgcolor="#111827", bordercolor="#1f2937", borderwidth=1,
+                    orientation="v", xanchor="left", x=1.02, yanchor="top", y=1, traceorder="normal")
+    )
 
-/* METRICS */
-[data-testid="metric-container"] {
-    background-color: #111827;
-    padding: 12px;
-    border-radius: 12px;
-}
+    # Alle Subplots Achsen
+    for i in range(1, rows+1):
+        fig.update_xaxes(showgrid=False, color="#e6e6e6", row=i, col=1)
+        fig.update_yaxes(showgrid=True, gridcolor="#1f2937", color="#e6e6e6", row=i, col=1)
 
-/* REMOVE WHITE BLOCKS */
-[data-testid="stVerticalBlock"] {
-    background-color: transparent !important;
-}
+    # -----------------------
+    # RETURN / STREAMLIT
+    # -----------------------
 
-/* Selectbox in Sidebar */
-section[data-testid="stSidebar"] div[data-baseweb="select"] > div {
-    background-color: #1f2937 !important;  /* dunkler Hintergrund */
-    color: #f3f4f6 !important;             /* heller Text */
-}
 
-section[data-testid="stSidebar"] div[data-baseweb="select"] span {
-    color: #f3f4f6 !important;             /* ausgewählter Text */
-}
+    st.markdown("""
+    <style>
 
-</style>
-""", unsafe_allow_html=True)
+    /* -------- GLOBAL DARK MODE -------- */
+    html, body, [class*="css"]  {
+        background-color: #0e1117 !important;
+        color: #e6e6e6 !important;
+    }
 
-st.plotly_chart(
-    fig,
-    use_container_width=True
-)
+    /* MAIN CONTAINER */
+    .stApp {
+        background-color: #0e1117 !important;
+    }
+
+    /* BLOCK CONTAINER */
+    .block-container {
+        background-color: #0e1117 !important;
+    }
+
+    /* TEXT FIX */
+    h1, h2, h3, h4, h5, h6, p, span, label {
+        color: #e6e6e6 !important;
+    }
+
+    /* SIDEBAR */
+    section[data-testid="stSidebar"] {
+        background-color: #111827 !important;
+    }
+
+    section[data-testid="stSidebar"] * {
+        color: #e6e6e6 !important;
+    }
+
+    /* INPUTS */
+    input, textarea, div[data-baseweb="select"] {
+        background-color: #1f2937 !important;
+        color: #e6e6e6 !important;
+    }
+
+    /* BUTTONS */
+    .stButton>button {
+        background-color: #1f2937 !important;
+        color: #e6e6e6 !important;
+        border-radius: 8px;
+    }
+
+    /* METRICS */
+    [data-testid="metric-container"] {
+        background-color: #111827;
+        padding: 12px;
+        border-radius: 12px;
+    }
+
+    /* REMOVE WHITE BLOCKS */
+    [data-testid="stVerticalBlock"] {
+        background-color: transparent !important;
+    }
+
+    /* Selectbox in Sidebar */
+    section[data-testid="stSidebar"] div[data-baseweb="select"] > div {
+        background-color: #1f2937 !important;  /* dunkler Hintergrund */
+        color: #f3f4f6 !important;             /* heller Text */
+    }
+
+    section[data-testid="stSidebar"] div[data-baseweb="select"] span {
+        color: #f3f4f6 !important;             /* ausgewählter Text */
+    }
+
+    </style>
+    """, unsafe_allow_html=True)
+
+    st.plotly_chart(fig, use_container_width=True, key=key)
+    return fig
 
 # -----------------------
 # ALERT / SIGNAL OUTPUT
