@@ -363,43 +363,49 @@ symbol = st.session_state.symbol
 # -----------------------
 # AUTO PERIOD / INTERVAL FIX
 # -----------------------
-def auto_period_interval(period, interval):
-    """
-    Stellt sicher, dass period und interval zusammenpassen.
-    Fügt period='1d' hinzu.
-    """
-    valid_map = {
-        "1m": ["1d", "5d"],
-        "5m": ["1d", "5d"],
-        "15m": ["5d", "1mo"],
-        "1h": ["1mo", "3mo"],
-        "4h": ["3mo", "6mo"],
-        "1d": ["1y", "max"]
-    }
+valid_map = {
+    "1m": ["1d", "5d"],
+    "5m": ["1d", "5d"],
+    "15m": ["5d", "1mo"],
+    "1h": ["1mo", "3mo"],
+    "4h": ["3mo", "6mo"],
+    "1d": ["1y", "max"]
+}
 
-    interval = st.sidebar.selectbox(
-        "Timeframe", 
-        list(valid_map.keys()),
-        key="interval_select"
-    )
+# --- DEFAULTS ---
+if "interval_select" not in st.session_state:
+    st.session_state.interval_select = "5m"
 
-    period = st.sidebar.selectbox(
-        "Period",
-        valid_map[interval],   # 👈 nur gültige anzeigen
-        key="period_select"
-    )
+if "period_select" not in st.session_state:
+    st.session_state.period_select = valid_map["5m"][0]
 
-    return period, interval
+# --- INTERVAL ---
+interval = st.sidebar.selectbox(
+    "Timeframe",
+    list(valid_map.keys()),
+    key="interval_select"
+)
+
+# 🔥 WICHTIG: HARTE VALIDIERUNG
+valid_periods = valid_map[interval]
+
+if st.session_state.period_select not in valid_periods:
+    st.session_state.period_select = valid_periods[0]
+
+# --- PERIOD ---
+period = st.sidebar.selectbox(
+    "Period",
+    valid_periods,
+    index=valid_periods.index(st.session_state.period_select),  # 👈 CRUCIAL
+    key="period_select"
+)
+
+st.sidebar.caption(f"Aktive Kombi: {interval} / {period}")
+
 
 show_volume = st.sidebar.checkbox("Volume", True)
 show_rsi = st.sidebar.checkbox("RSI", True)
 show_macd = st.sidebar.checkbox("MACD", True)
-
-# Aufruf Autoperiod:
-period, interval = auto_period_interval()
-
-st.sidebar.caption(f"Aktive Kombi: {interval} / {period}")
-
 # -----------------------
 # DATA
 # -----------------------
