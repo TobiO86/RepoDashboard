@@ -1440,36 +1440,32 @@ show_volume = True
 show_rsi = True
 show_macd = True
 
-current_row = 1
+rows = 1
 
-price_row = current_row
-current_row += 1
+price_row = 1
+
 
 # 🔥 Timeline IMMER Row 2
-timeline_row = current_row
-current_row += 1
+timeline_row = 2
+current_row = 2
 
-volume_row = None
 if show_volume:
     volume_row = current_row
     current_row += 1
 
-score_row = None
 if show_score:
     score_row = current_row
     current_row += 1
 
-rsi_row = None
 if show_rsi:
     rsi_row = current_row
     current_row += 1
 
-macd_row = None
 if show_macd:
     macd_row = current_row
     current_row += 1
 
-rows = current_row #- 1
+rows = current_row - 1
 
 titles = ["Price", "Timeline"]
 
@@ -1497,7 +1493,7 @@ else:
 
 rows = 5  # Price, Volume, Score, Indicator, Timeline
 row_heights = [0.5, 0.15, 0.15, 0.1, 0.1]
-titles = ["Price", "Volume", "Score", "Indicator", "Timeline"]
+titles = ["Price", "Timeline", "Volume", "Score", "Indicator" ]
 
 fig = make_subplots(
     rows=rows,
