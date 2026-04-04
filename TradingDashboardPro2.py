@@ -1595,12 +1595,20 @@ if "Session" in df.columns:
 # -----------------------
 
 # Volume
+
 if "Volume" in df.columns:
     fig.add_trace(go.Bar(x=df.index, y=df["Volume"], name="Volume"),
                   row=volume_row, col=1)
-    fig.add_annotation(x=df.index[-1], y=df["Volume"].iloc[-1],
-                       text=f"Vol {df['Volume'].iloc[-1]:.0f}", showarrow=False,
-                       xanchor="left", row=volume_row, col=1, font=dict(size=14))
+    fig.add_annotation(
+        x=1.01,  # rechts außerhalb der Achse
+        y=df["Volume"].iloc[-1],
+        xref="paper",
+        yref=f"y{volume_row}",
+        text=f"{df['Volume'].iloc[-1]:.0f}",
+        showarrow=False,
+        xanchor="left",
+        font=dict(size=12)
+    )
 
 # -----------------------
 # SCORE
