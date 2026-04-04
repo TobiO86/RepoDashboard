@@ -1556,9 +1556,41 @@ for sig, marker, col_name in [(df.get("LongSignal"), "triangle-up", "LONG"), (df
 # -----------------------
 # TIMELINE
 # -----------------------
+# -----------------------
+# TIMELINE MIT DATUM/UHRZEIT UND SESSION-FARBEN
+# -----------------------
+if "Session" in df.columns:
+    # Session-Y-Werte (kleiner Versatz für Sichtbarkeit)
+    session_y = df['Session'].map({"PREMARKET": 1, "RTH": 2, "AFTERHOURS": 3})
+    
+    fig.add_trace(go.Scatter(
+        x=df.index,
+        y=session_y,
+        mode='markers',
+        marker=dict(
+            color=[session_colors.get(s, "white") for s in df['Session']],
+            size=8,
+            symbol="square"
+        ),
+        showlegend=False,
+        hoverinfo="text",
+        text=df['Session']
+    ), row=timeline_row, col=1)
 
-fig.add_trace(go.Scatter(x=df.index, y=[0]*len(df), mode='markers', name="Timeline"),
-            row=timeline_row, col=1)
+    # Y-Achse für Timeline anpassen
+    fig.update_yaxes(
+        tickvals=[1, 2, 3],
+        ticktext=["PREMARKET", "RTH", "AFTERHOURS"],
+        row=timeline_row, col=1,
+        title_text="Session",
+        showgrid=False
+    )
+
+    # X-Achse formatieren für Datum/Uhrzeit
+    fig.update_xaxes(
+        tickformat="%H:%M\n%d-%m",
+        row=timeline_row, col=1
+    )
 
 # -----------------------
 # VOLUME
