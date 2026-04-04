@@ -1599,7 +1599,7 @@ for i in range(1, rows+1):
         fig.update_xaxes(showticklabels=True, showspikes=True, spikemode="across", row=i, col=1)
         fig.update_yaxes(showspikes=True)
     else:
-        fig.update_xaxes(showticklabels=False, showspikes=True, spikemode="across" row=i, col=1)  
+        fig.update_xaxes(showticklabels=False, showspikes=True, spikemode="across", row=i, col=1)  
         fig.update_yaxes(showspikes=True)
         
         
