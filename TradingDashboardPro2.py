@@ -1609,19 +1609,21 @@ if show_macd and macd_row is not None:
 # -----------------------
 # LAYOUT
 # -----------------------
-height = 400 + (rows * 250)
+# -----------------------
+height = 400 + rows*250
 fig.update_layout(
     template="plotly_dark",
     paper_bgcolor="#0e1117",
     plot_bgcolor="#0e1117",
     font=dict(color="#e6e6e6"),
     hovermode="x unified",
-    xaxis_rangeslider_visible=False
+    xaxis_rangeslider_visible=False,
+    height=height
 )
+
 for i in range(1, rows+1):
     fig.update_xaxes(showgrid=False, color="#e6e6e6", row=i, col=1)
     fig.update_yaxes(showgrid=True, gridcolor="#1f2937", color="#e6e6e6", row=i, col=1)
-
 st.markdown("""
 <style>
 
