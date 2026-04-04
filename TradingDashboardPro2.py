@@ -1745,7 +1745,8 @@ fig.add_trace(go.Scatter(
 # VOLUME
 # -----------------------
 
-if show_volume:
+
+if show_volume and volume_row is not None:
     fig.add_trace(go.Bar(
         x=df.index,
         y=df["Volume"],
@@ -1767,7 +1768,7 @@ if show_volume:
 # RSI
 # -----------------------
 
-if show_rsi:
+if show_rsi and rsi_row is not None:
     fig.add_trace(go.Scatter(
         x=df.index,
         y=df["RSI"],
@@ -1793,12 +1794,16 @@ if show_rsi:
 # MACD
 # -----------------------
 
-if show_macd:
-    fig.add_trace(go.Scatter(
-        x=df.index,
-        y=df["MACD"],
-        name="MACD"
-    ), row=macd_row, col=1)
+if show_macd and macd_row is not None:
+    fig.add_trace(
+        go.Scatter(
+            x=df.index,
+            y=df["MACD"],
+            name="MACD"
+        ),
+        row=macd_row,
+        col=1
+    )
 
     fig.add_trace(go.Scatter(
         x=df.index,
@@ -1839,8 +1844,8 @@ if show_macd:
 # -----------------------
 # SCORE
 # -----------------------
-    
-if show_score:
+  
+if show_score and score_row is not None:
     fig.add_trace(go.Scatter(
         x=df.index,
         y=df["LongScore"],
