@@ -1576,6 +1576,7 @@ for r in resistances:
         annotation_font_color="red"
     )
 
+
 # -----------------------
 # TIMELINE (Datum + Uhrzeit)
 # -----------------------
