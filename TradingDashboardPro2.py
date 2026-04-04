@@ -1441,7 +1441,7 @@ show_rsi = True
 show_macd = True
 
 # -----------------------
-# Statische Reihen & Titel
+# FIXED ROW MAPPING
 # -----------------------
 rows_map = {
     "Price": 1,
@@ -1455,9 +1455,9 @@ rows = 6
 titles = ["Price", "Timeline", "Volume", "Score", "RSI", "MACD"]
 
 # -----------------------
-# Feste Höhen
+# Feste Höhen (Summe = 1)
 # -----------------------
-row_heights = [0.55, 0.1, 0.15, 0.15, 0.15, 0.15]  # Summe ≈1
+row_heights = [0.55, 0.05, 0.12, 0.12, 0.08, 0.08]  # Price groß, Timeline schmal
 
 fig = make_subplots(
     rows=rows,
@@ -1474,6 +1474,7 @@ volume_row = rows_map["Volume"]
 score_row = rows_map["Score"]
 rsi_row = rows_map["RSI"]
 macd_row = rows_map["MACD"]
+
 
 # -----------------------
 # PRICE CHART
@@ -1569,12 +1570,13 @@ for r in resistances:
 # TIMELINE (Datum + Uhrzeit)
 # -----------------------
 session_colors = {"PREMARKET":"lightblue","RTH":"white","AFTERHOURS":"lightcoral"}
+# Y-Werte innerhalb der Timeline-Row auf 0.5 für mittig
 fig.add_trace(go.Scatter(
     x=df.index,
-    y=[0]*len(df),
+    y=[0.5]*len(df),
     mode="markers",
     marker=dict(color=[session_colors[s] for s in df["Session"]], size=6),
-    text=[f"{i.strftime('%Y-%m-%d %H:%M')}" for i in df.index],  # Datum + Uhrzeit
+    text=[f"{i.strftime('%Y-%m-%d %H:%M')}" for i in df.index],
     hoverinfo="text",
     showlegend=False
 ), row=timeline_row, col=1)
