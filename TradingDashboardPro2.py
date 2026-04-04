@@ -1445,51 +1445,31 @@ titles = ["Price", "Timeline"]
 rows_map = {"Price": 1, "Timeline": 2}
 current_row = 3
 
-# Dynamische Row-Zuweisung
-if show_volume:
-    rows_map["Volume"] = current_row
-    current_row += 1
-if show_score:
-    rows_map["Score"] = current_row
-    current_row += 1
-if show_rsi:
-    rows_map["RSI"] = current_row
-    current_row += 1
-if show_macd:
-    rows_map["MACD"] = current_row
-    current_row += 1
+# -----------------------
+# Row assignment
+price_row = 1
+timeline_row = 2
+volume_row = 3
+score_row = 4
+rsi_row = 5
+macd_row = 6
 
-rows = current_row - 1
+# Subplot titles
+titles = ["Price", "Timeline", "Volume", "Score", "RSI", "MACD"]
 
-# Subplot-Titel
-for key in ["Volume", "Score", "RSI", "MACD"]:
-    if key in rows_map:
-        titles.append(key)
+# Row heights
+row_heights = [0.5, 0.05, 0.1, 0.1, 0.1, 0.15]  # Beispiel: Price groß, Timeline klein, andere mittel
 
-# Row Heights
-main_height = 0.5
-remaining_height = 1 - main_height
-small_height = remaining_height / (rows - 1)
-row_heights = [main_height] + [small_height] * (rows - 1)
 
+# Create figure
 fig = make_subplots(
-    rows=rows,
+    rows=6,
     cols=1,
     shared_xaxes=True,
     vertical_spacing=0.03,
     row_heights=row_heights,
     subplot_titles=titles
 )
-
-# -----------------------
-# ROW-ZUWEISUNG
-# -----------------------
-price_row = rows_map["Price"]
-timeline_row = rows_map["Timeline"]
-volume_row = rows_map.get("Volume")
-score_row = rows_map.get("Score")
-rsi_row = rows_map.get("RSI")
-macd_row = rows_map.get("MACD")
 
 # -----------------------
 # PRICE CANDLES
