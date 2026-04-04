@@ -1442,58 +1442,45 @@ show_macd = True
 
 rows = 1
 
+# Row-Zuweisung
 price_row = 1
-
-
-# 🔥 Timeline IMMER Row 2
 timeline_row = 2
-current_row = 2
 
+# Dynamische Indikatoren ab Row 3
+current_row = 3
+volume_row = current_row if show_volume else None
 if show_volume:
-    volume_row = current_row
     current_row += 1
 
+score_row = current_row if show_score else None
 if show_score:
-    score_row = current_row
     current_row += 1
 
+rsi_row = current_row if show_rsi else None
 if show_rsi:
-    rsi_row = current_row
     current_row += 1
 
+macd_row = current_row if show_macd else None
 if show_macd:
-    macd_row = current_row
     current_row += 1
 
 rows = current_row - 1
 
 titles = ["Price", "Timeline"]
-
 if show_volume:
     titles.append("Volume")
-
 if show_score:
     titles.append("Score")
-
 if show_rsi:
     titles.append("RSI")
-
 if show_macd:
     titles.append("MACD")
-    
-# 👉 WICHTIG: größere Hauptchart-Gewichtung
-# Hauptchart = 0.5, Rest gleichmäßig
-if rows == 1:
-    row_heights = [1.0]
-else:
-    main_height = 0.5
-    remaining_height = 1 - main_height
-    small_height = remaining_height / (rows - 1)
-    row_heights = [main_height] + [small_height] * (rows - 1)
 
-rows = 5  # Price, Volume, Score, Indicator, Timeline
-row_heights = [0.5, 0.15, 0.15, 0.1, 0.1]
-titles = ["Price", "Timeline", "Volume", "Score", "Indicator" ]
+# Beispiel: Hauptchart 0.5, Rest gleichmäßig
+main_height = 0.5
+remaining_height = 1 - main_height
+small_height = remaining_height / (rows - 1)
+row_heights = [main_height] + [small_height] * (rows - 1)
 
 fig = make_subplots(
     rows=rows,
