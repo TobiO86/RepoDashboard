@@ -1472,24 +1472,44 @@ fig = make_subplots(
 )
 
 
-def add_last_value_label(fig, df, column, row, col=1, fmt="{:.2f}"):
-    if column in df.columns and not df.empty:
-        val = df[column].iloc[-1]
-        if not np.isnan(val):
-            fig.add_annotation(
-                x=df.index[-1],
-                y=val,
-                text=fmt.format(val),
-                showarrow=False,
-                xanchor="left",
-                xshift=10,
-                font=dict(size=11),
-                bgcolor="#111827",
-                bordercolor="#333",
-                borderwidth=1,
-                row=row,
-                col=col
-            )
+def add_stacked_labels(fig, items, row, col=1, spacing=0.02):
+    """
+    items = list of tuples: (value, text)
+    spacing = relativer Abstand (0.02 = 2%)
+    """
+    if not items:
+        return
+
+    # Sortieren (wichtig für sauberes stacking)
+    items = sorted(items, key=lambda x: x[0])
+
+    last_y = None
+
+    for val, text in items:
+        if val is None or np.isnan(val):
+            continue
+
+        y = val
+
+        # Overlap vermeiden
+        if last_y is not None and abs(y - last_y) < spacing * abs(y):
+            y = last_y + spacing * abs(y)
+
+        fig.add_annotation(
+            x=1.01,
+            y=y,
+            xref="paper",
+            yref=f"y{row}",
+            text=text,
+            showarrow=False,
+            xanchor="left",
+            font=dict(size=11),
+            bgcolor="#111827",
+            bordercolor="#333",
+            borderwidth=1
+        )
+
+        last_y = y
 # -----------------------
 # PRICE CANDLES
 # -----------------------
@@ -1572,18 +1592,65 @@ for sig, marker, col_name in [(df.get("LongSignal"), "triangle-up", "LONG"), (df
             connectgaps=False
         ), row=price_row, col=1)
 
-add_last_value_label(fig, df, "Close", price_row)
-add_last_value_label(fig, df, "EMA20", price_row)
-add_last_value_label(fig, df, "EMA50", price_row)
-add_last_value_label(fig, df, "VWAP_RTH", price_row)
-add_last_value_label(fig, df, "VWAP_upper2", price_row)
-add_last_value_label(fig, df, "VWAP_lower2", price_row)
-add_last_value_label(fig, df, "KC_UPPER", price_row)
-add_last_value_label(fig, df, "KC_MID", price_row)
-add_last_value_label(fig, df, "KC_LOWER", price_row)
-add_last_value_label(fig, df, "BB_UPPER", price_row)
-add_last_value_label(fig, df, "BB_LOWER", price_row)
-add_last_value_label(fig, df, "BB_MID", price_row)
+price_items = []
+
+def add(col, name, fmt="{:.2f}"):
+    if col in df.columns:
+        val = df[col].iloc[-1]
+        if not np.isnan(val):
+            price_items.append((val, f"{name}: {fmt.format(val)}"))
+
+# Core
+add("Close", "Close")
+add("EMA20", "EMA20")
+add("EMA50", "EMA50")
+add("VWAP_RTH", "VWAP")
+
+# Bands
+add("VWAP_upper2", "VWAP +2")
+add("VWAP_lower2", "VWAP -2")
+add("KC_UPPER", "KC U")
+add("KC_MID", "KC M")
+add("KC_LOWER", "KC L")
+add("BB_UPPER", "BB U")
+add("BB_LOWER", "BB L")
+add("BB_MID", "BB M")
+
+ # -----------------------
+# SUPPORT / RESISTANCE FILTER
+# -----------------------
+filtered_supports = []
+filtered_resistances = []
+
+if not df.empty and "High" in df.columns and "Low" in df.columns:
+
+    price_range = df["High"].max() - df["Low"].min()
+    current_price = df["Close"].iloc[-1]
+
+    # Sicherheitscheck
+    if price_range > 0:
+
+        # supports / resistances müssen vorher existieren!
+        if "supports" in locals():
+            filtered_supports = [
+                s for s in supports
+                if abs(s - current_price) < price_range * 0.3
+            ][:2]
+
+        if "resistances" in locals():
+            filtered_resistances = [
+                r for r in resistances
+                if abs(r - current_price) < price_range * 0.3
+            ][:2]   
+            
+# SUPPORT / RESISTANCE
+for s in filtered_supports:
+    price_items.append((s, f"S: {s:.2f}"))
+
+for r in filtered_resistances:
+    price_items.append((r, f"R: {r:.2f}"))
+
+add_stacked_labels(fig, price_items, price_row)
 # -----------------------
 # TIMELINE UNTER PRICE
 # -----------------------
@@ -1625,52 +1692,80 @@ if "Session" in df.columns:
 # VOLUME
 # -----------------------
 
-# Volume
-
+vol_items = []
 if "Volume" in df.columns:
-    fig.add_trace(go.Bar(x=df.index, y=df["Volume"], name="Volume"),
-                  row=volume_row, col=1)
+    fig.add_trace(
+        go.Bar(x=df.index, y=df["Volume"], name="Volume"),
+        row=volume_row, col=1
+    )
 
-    add_last_value_label(fig, df, "Volume", volume_row, fmt="{:.0f}")
+    val = df["Volume"].iloc[-1]
+    vol_items.append((val, f"Vol: {val:.0f}"))
+
+add_stacked_labels(fig, vol_items, volume_row)
 
 # -----------------------
 # SCORE
 # -----------------------
-for col in ["LongScore", "ShortScore"]:
-    if col in df.columns:
-        fig.add_trace(go.Scatter(x=df.index, y=df[col], name=col),
-                      row=score_row, col=1)
+score_items = []
 
-add_last_value_label(fig, df, "LongScore", score_row)
-add_last_value_label(fig, df, "ShortScore", score_row)
+for col, name in [("LongScore", "Long Score"), ("ShortScore", "Short Score")]:
+    if col in df.columns:
+        fig.add_trace(go.Scatter(x=df.index, y=df[col], name=name),
+                      row=score_row, col=1)
+        val = df[col].iloc[-1]
+        score_items.append((val, f"{name}: {val:.2f}"))
+
+        fig.add_trace(
+            go.Scatter(x=df.index, y=df[col], name=name),
+            row=score_row, col=1
+        )
+
+add_stacked_labels(fig, score_items, score_row)
 
 # -----------------------
 # RSI
 # -----------------------
+rsi_items = []
 if "RSI" in df.columns:
-    fig.add_trace(go.Scatter(x=df.index, y=df["RSI"], name="RSI"),
-                  row=rsi_row, col=1)
+    fig.add_trace(
+        go.Scatter(x=df.index, y=df["RSI"], name="RSI"),
+        row=rsi_row, col=1
+    )
 
-    add_last_value_label(fig, df, "RSI", rsi_row, fmt="{:.1f}")
+    val = df["RSI"].iloc[-1]
+    rsi_items.append((val, f"RSI: {val:.1f}"))
+
+add_stacked_labels(fig, rsi_items, rsi_row)
 
 # -----------------------
 # MACD
 # -----------------------
+macd_items = []
+
 for col, name in [("MACD", "MACD"), ("MACD_signal", "Signal")]:
     if col in df.columns:
-        fig.add_trace(go.Scatter(x=df.index, y=df[col], name=name),
-                      row=macd_row, col=1)
+        fig.add_trace(
+            go.Scatter(x=df.index, y=df[col], name=name),
+            row=macd_row, col=1
+        )
 
-add_last_value_label(fig, df, "MACD", macd_row)
-add_last_value_label(fig, df, "MACD_signal", macd_row)
-add_last_value_label(fig, df, "MACD_hist", macd_row)
+if "MACD_hist" in df.columns:
+    fig.add_trace(
+        go.Bar(x=df.index, y=df["MACD_hist"], name="Histogram"),
+        row=macd_row, col=1
+    )
+
+# Labels
+for col in ["MACD", "MACD_signal", "MACD_hist"]:
+    if col in df.columns:
+        val = df[col].iloc[-1]
+        macd_items.append((val, f"{col}: {val:.2f}"))
+
+add_stacked_labels(fig, macd_items, macd_row)
 # -----------------------
 # SUPPORT / RESISTANCE
 # -----------------------
-price_range = df["High"].max() - df["Low"].min() if not df.empty else 0
-filtered_supports = [s for s in supports if abs(s - current_price) < price_range * 0.3][:2]
-filtered_resistances = [r for r in resistances if abs(r - current_price) < price_range * 0.3][:2]
-
 for s in filtered_supports:
     fig.add_shape(type="line", x0=df.index[0], x1=df.index[-1], y0=s, y1=s,
                   line=dict(dash="dot", color="green", width=1.5),
@@ -1679,6 +1774,7 @@ for r in filtered_resistances:
     fig.add_shape(type="line", x0=df.index[0], x1=df.index[-1], y0=r, y1=r,
                   line=dict(dash="dot", color="red", width=1.5),
                   xref="x", yref=f"y{price_row}")
+    
 # -----------------------
 # LAYOUT
 # -----------------------
