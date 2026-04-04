@@ -1432,21 +1432,13 @@ supports = sorted(supports, key=lambda x: abs(x - current_price))[:5]
 resistances = sorted(resistances, key=lambda x: abs(x - current_price))[:5]
 
 # -----------------------
-# SUBPLOTS KONFIG
+# Subplot Setup
 # -----------------------
-
 show_score = True
 show_volume = True
 show_rsi = True
 show_macd = True
 
-# Basis Rows
-titles = ["Price", "Timeline"]
-rows_map = {"Price": 1, "Timeline": 2}
-current_row = 3
-
-# -----------------------
-# Row assignment
 price_row = 1
 timeline_row = 2
 volume_row = 3
@@ -1454,328 +1446,140 @@ score_row = 4
 rsi_row = 5
 macd_row = 6
 
-# Subplot titles
 titles = ["Price", "Timeline", "Volume", "Score", "RSI", "MACD"]
-
-# Row heights
 row_heights = [0.5, 0.07, 0.15, 0.1, 0.09, 0.09]
 row_heights = [h/sum(row_heights) for h in row_heights]
 
-# Create figure
 fig = make_subplots(
-    rows=6,
-    cols=1,
+    rows=6, cols=1,
     shared_xaxes=True,
     vertical_spacing=0.03,
     row_heights=row_heights,
     subplot_titles=titles
 )
 
-
-def add_stacked_labels(fig, items, row, col=1, spacing=0.02):
-    """
-    items = list of tuples: (value, text)
-    spacing = relativer Abstand (0.02 = 2%)
-    """
-    if not items:
-        return
-
-    # Sortieren (wichtig für sauberes stacking)
-    items = sorted(items, key=lambda x: x[0])
-
-    last_y = None
-
-    for val, text in items:
-        if val is None or np.isnan(val):
-            continue
-
-        y = val
-
-        # Overlap vermeiden
-        if last_y is not None and abs(y - last_y) < spacing * abs(y):
-            y = last_y + spacing * abs(y)
-
-        fig.add_annotation(
-            x=1.01,
-            y=y,
-            xref="paper",
-            yref=f"y{row}",
-            text=text,
-            showarrow=False,
-            xanchor="left",
-            font=dict(size=11),
-            bgcolor="#111827",
-            bordercolor="#333",
-            borderwidth=1
-        )
-
-        last_y = y
 # -----------------------
-# PRICE CANDLES
+# Price Candles + Overlays
 # -----------------------
-session_colors = {
-    "PREMARKET": "lightblue",
-    "RTH": "white",
-    "AFTERHOURS": "lightcoral"
-}
+session_colors = {"PREMARKET":"lightblue","RTH":"white","AFTERHOURS":"lightcoral"}
+rth_df = df[df["Session"]=="RTH"]
+pre_df = df[df["Session"]=="PREMARKET"]
+ah_df  = df[df["Session"]=="AFTERHOURS"]
 
-rth_df = df[df.get("Session") == "RTH"]
-pre_df = df[df.get("Session") == "PREMARKET"]
-ah_df  = df[df.get("Session") == "AFTERHOURS"]
-
-# Candles RTH
-if not rth_df.empty:
-    fig.add_trace(go.Candlestick(
-        x=rth_df.index, open=rth_df["Open"], high=rth_df["High"],
-        low=rth_df["Low"], close=rth_df["Close"],
-        name="RTH", increasing_line_color='green', decreasing_line_color='red'
-    ), row=price_row, col=1)
-
-# Candles PRE
-if not pre_df.empty:
-    fig.add_trace(go.Candlestick(
-        x=pre_df.index, open=pre_df["Open"], high=pre_df["High"],
-        low=pre_df["Low"], close=pre_df["Close"],
-        name="PRE", increasing_line_color='lightgreen', decreasing_line_color='lightcoral', opacity=0.5
-    ), row=price_row, col=1)
-
-# Candles AH
-if not ah_df.empty:
-    fig.add_trace(go.Candlestick(
-        x=ah_df.index, open=ah_df["Open"], high=ah_df["High"],
-        low=ah_df["Low"], close=ah_df["Close"],
-        name="AH", increasing_line_color='lightblue', decreasing_line_color='lightsalmon', opacity=0.5
-    ), row=price_row, col=1)
+for sess_df, name, inc, dec, opacity in [
+    (rth_df, "RTH", "green", "red", 1),
+    (pre_df, "PRE", "lightgreen", "lightcoral", 0.5),
+    (ah_df, "AH", "lightblue", "lightsalmon", 0.5)
+]:
+    if not sess_df.empty:
+        fig.add_trace(go.Candlestick(
+            x=sess_df.index, open=sess_df["Open"], high=sess_df["High"],
+            low=sess_df["Low"], close=sess_df["Close"],
+            name=name, increasing_line_color=inc, decreasing_line_color=dec, opacity=opacity
+        ), row=price_row, col=1)
 
 # Gesamter Price Trace
-if not df.empty:
-    fig.add_trace(go.Candlestick(
-        x=df.index, open=df["Open"], high=df["High"], low=df["Low"], close=df["Close"], name="Price"
-    ), row=price_row, col=1)
+fig.add_trace(go.Candlestick(
+    x=df.index, open=df["Open"], high=df["High"], low=df["Low"], close=df["Close"], name="Price"
+), row=price_row, col=1)
 
-# VWAP Linien
-for sess_df, col_name, color in [(rth_df, "VWAP_RTH", "yellow"), (pre_df, "VWAP_PRE", "orange"), (ah_df, "VWAP_AH", "purple")]:
-    if not sess_df.empty and col_name in sess_df.columns and sess_df[col_name].notna().any():
+# VWAP / EMA / Bands
+overlays = [
+    ("VWAP_RTH","yellow"),("VWAP_PRE","orange"),("VWAP_AH","purple"),
+    ("EMA20","blue"),("EMA50","blue"),
+    ("VWAP_upper2","blue"),("VWAP_lower2","blue"),
+    ("KC_UPPER","blue"),("KC_MID","blue"),("KC_LOWER","blue"),
+    ("BB_UPPER","dot"),("BB_LOWER","dot"),("BB_MID","solid")
+]
+for col, color in overlays:
+    if col in df.columns:
+        dash = "dot" if "dot" in str(color) else None
         fig.add_trace(go.Scatter(
-            x=sess_df.index,
-            y=sess_df[col_name],
-            name=col_name,
-            line=dict(width=3, color=color)
+            x=df.index, y=df[col], name=col,
+            line=dict(width=2, color="blue", dash=dash)
         ), row=price_row, col=1)
 
-# EMA, VWAP Bands, Keltner Channel
-for col, name in [("EMA20", "EMA20"), ("EMA50", "EMA50"), ("VWAP_upper2", "VWAP +2"), ("VWAP_lower2", "VWAP -2"),
-                  ("KC_UPPER", "KC Upper"), ("KC_MID", "KC Mid"), ("KC_LOWER", "KC Lower")]:
-    if col in df.columns:
-        fig.add_trace(go.Scatter(x=df.index, y=df[col], name=name,
-                                 line=dict(width=1, color="blue") if "MID" in name else None),
-                      row=price_row, col=1)
-
-# Bollinger Bands
-for col, name in [("BB_UPPER", "BB Upper"), ("BB_LOWER", "BB Lower"), ("BB_MID", "BB Mid")]:
-    if col in df.columns:
-        fig.add_trace(go.Scatter(
-            x=df.index,
-            y=df[col],
-            name=name,
-            line=dict(width=1, dash="dot") if "UPPER" in name or "LOWER" in name else dict(width=1)
-        ), row=price_row, col=1)
-
-# LONG/SHORT Signale auf Price
-for sig, marker, col_name in [(df.get("LongSignal"), "triangle-up", "LONG"), (df.get("ShortSignal"), "triangle-down", "SHORT")]:
+# LONG/SHORT Marker
+for sig, marker, name in [(df.get("LongSignal"), "triangle-up", "LONG"), (df.get("ShortSignal"), "triangle-down", "SHORT")]:
     if sig is not None and sig.any():
         fig.add_trace(go.Scatter(
-            x=df.index[sig], y=df["Close"][sig],
-            mode="markers",
-            marker=dict(symbol=marker, size=12),
-            name=col_name,
-            connectgaps=False
+            x=df.index[sig], y=df["Close"][sig], mode="markers",
+            marker=dict(symbol=marker, size=12), name=name
         ), row=price_row, col=1)
 
+# -----------------------
+# Stacked Labels Funktion
+# -----------------------
+def add_stacked_labels(fig, items, row, spacing=0.02):
+    if not items: return
+    items = sorted(items, key=lambda x:x[0])
+    last_y = None
+    for val, text in items:
+        if val is None or np.isnan(val): continue
+        y = val
+        if last_y is not None and abs(y-last_y)<spacing*abs(y):
+            y = last_y + spacing*abs(y)
+        fig.add_annotation(x=1.01, y=y, xref="paper", yref=f"y{row}", text=text,
+                           showarrow=False, xanchor="left",
+                           font=dict(size=11), bgcolor="#111827", bordercolor="#333", borderwidth=1)
+        last_y = y
+
+# Price Labels + Support/Resistance
 price_items = []
-
-def add(col, name, fmt="{:.2f}"):
+for col, name in [("Close","Close"),("EMA20","EMA20"),("EMA50","EMA50"),("VWAP_RTH","VWAP")]:
     if col in df.columns:
-        val = df[col].iloc[-1]
-        if not np.isnan(val):
-            price_items.append((val, f"{name}: {fmt.format(val)}"))
-
-# Core
-add("Close", "Close")
-add("EMA20", "EMA20")
-add("EMA50", "EMA50")
-add("VWAP_RTH", "VWAP")
-
-# Bands
-add("VWAP_upper2", "VWAP +2")
-add("VWAP_lower2", "VWAP -2")
-add("KC_UPPER", "KC U")
-add("KC_MID", "KC M")
-add("KC_LOWER", "KC L")
-add("BB_UPPER", "BB U")
-add("BB_LOWER", "BB L")
-add("BB_MID", "BB M")
-
-# -----------------------
-# SUPPORT / RESISTANCE FILTER
-# -----------------------
-filtered_supports = []
-filtered_resistances = []
-
-if not df.empty and "High" in df.columns and "Low" in df.columns:
-    price_range = df["High"].max() - df["Low"].min()
-    current_price = df["Close"].iloc[-1]
-
-    # Sicherheitscheck
-    if price_range > 0:
-        if 'supports' in locals() and supports:
-            filtered_supports = sorted(supports, key=lambda x: abs(x - current_price))[:2]
-        if 'resistances' in locals() and resistances:
-            filtered_resistances = sorted(resistances, key=lambda x: abs(x - current_price))[:2]
-
-# Support / Resistance Labels
-for s in filtered_supports:
-    price_items.append((s, f"S: {s:.2f}"))
-for r in filtered_resistances:
-    price_items.append((r, f"R: {r:.2f}"))
-
-# stacked labels hinzufügen
+        price_items.append((df[col].iloc[-1], f"{name}: {df[col].iloc[-1]:.2f}"))
+filtered_supports = sorted(supports,key=lambda x:abs(x-df["Close"].iloc[-1]))[:2] if 'supports' in locals() else []
+filtered_resistances = sorted(resistances,key=lambda x:abs(x-df["Close"].iloc[-1]))[:2] if 'resistances' in locals() else []
+for s in filtered_supports: price_items.append((s,f"S: {s:.2f}"))
+for r in filtered_resistances: price_items.append((r,f"R: {r:.2f}"))
 add_stacked_labels(fig, price_items, price_row)
-            
-# -----------------------
-# TIMELINE UNTER PRICE
-# -----------------------
-if "Session" in df.columns:
-    # Kleine Y-Versätze nur für Sichtbarkeit
-    session_y = df['Session'].map({"PREMARKET": 1, "RTH": 2, "AFTERHOURS": 3})
-    
-    fig.add_trace(go.Scatter(
-        x=df.index,
-        y=session_y,
-        mode='markers',
-        marker=dict(
-            color=[session_colors.get(s, "white") for s in df['Session']],
-            size=10,
-            symbol="square"
-        ),
-        showlegend=False,
-        hoverinfo="text",
-        text=[f"{s} | {t.strftime('%H:%M %d-%m')}" for s, t in zip(df['Session'], df.index)]
-    ), row=timeline_row, col=1)
 
-    # Y-Achse für kleine Timeline
-    fig.update_yaxes(
-        tickvals=[1, 2, 3],
-        ticktext=["PREMARKET", "RTH", "AFTERHOURS"],
-        row=timeline_row, col=1,
-        title_text="Session",
-        showgrid=False
-    )
-
-    # X-Achse direkt unter Price chart formatieren für Datum/Uhrzeit
-    fig.update_xaxes(
-        tickformat="%H:%M\n%d-%m",
-        row=timeline_row, col=1,
-        showticklabels=True
-    )
-
-# -----------------------
-# VOLUME
-# -----------------------
-
-vol_items = []
-if "Volume" in df.columns:
-    fig.add_trace(
-        go.Bar(x=df.index, y=df["Volume"], name="Volume"),
-        row=volume_row, col=1
-    )
-
-    val = df["Volume"].iloc[-1]
-    vol_items.append((val, f"Vol: {val:.0f}"))
-
-add_stacked_labels(fig, vol_items, volume_row)
-
-# -----------------------
-# SCORE
-# -----------------------
-score_items = []
-
-for col, name in [("LongScore", "Long Score"), ("ShortScore", "Short Score")]:
-    if col in df.columns:
-        fig.add_trace(go.Scatter(x=df.index, y=df[col], name=name),
-                      row=score_row, col=1)
-        val = df[col].iloc[-1]
-        score_items.append((val, f"{name}: {val:.2f}"))
-
-        fig.add_trace(
-            go.Scatter(x=df.index, y=df[col], name=name),
-            row=score_row, col=1
-        )
-
-add_stacked_labels(fig, score_items, score_row)
-
-# -----------------------
-# RSI
-# -----------------------
-rsi_items = []
-if "RSI" in df.columns:
-    fig.add_trace(
-        go.Scatter(x=df.index, y=df["RSI"], name="RSI"),
-        row=rsi_row, col=1
-    )
-
-    val = df["RSI"].iloc[-1]
-    rsi_items.append((val, f"RSI: {val:.1f}"))
-
-add_stacked_labels(fig, rsi_items, rsi_row)
-
-# -----------------------
-# MACD
-# -----------------------
-macd_items = []
-
-for col, name in [("MACD", "MACD"), ("MACD_signal", "Signal")]:
-    if col in df.columns:
-        fig.add_trace(
-            go.Scatter(x=df.index, y=df[col], name=name),
-            row=macd_row, col=1
-        )
-
-if "MACD_hist" in df.columns:
-    fig.add_trace(
-        go.Bar(x=df.index, y=df["MACD_hist"], name="Histogram"),
-        row=macd_row, col=1
-    )
-
-# Labels
-for col in ["MACD", "MACD_signal", "MACD_hist"]:
-    if col in df.columns:
-        val = df[col].iloc[-1]
-        macd_items.append((val, f"{col}: {val:.2f}"))
-
-add_stacked_labels(fig, macd_items, macd_row)
-# -----------------------
-# SUPPORT / RESISTANCE
-# -----------------------
+# Support/Resistance Lines
 for s in filtered_supports:
     fig.add_shape(type="line", x0=df.index[0], x1=df.index[-1], y0=s, y1=s,
-                  line=dict(dash="dot", color="green", width=1.5),
-                  xref="x", yref=f"y{price_row}")
+                  line=dict(dash="dot", color="green", width=1.5), xref="x", yref=f"y{price_row}")
 for r in filtered_resistances:
     fig.add_shape(type="line", x0=df.index[0], x1=df.index[-1], y0=r, y1=r,
-                  line=dict(dash="dot", color="red", width=1.5),
-                  xref="x", yref=f"y{price_row}")
-    
+                  line=dict(dash="dot", color="red", width=1.5), xref="x", yref=f"y{price_row}")
+
 # -----------------------
-# LAYOUT
+# Timeline unter Price
 # -----------------------
-num_rows = 6  # Price, Timeline, Volume, Score, RSI, MACD
-height = 400 + (num_rows * 250)
+if "Session" in df.columns:
+    y_map = df['Session'].map({"PREMARKET":1,"RTH":2,"AFTERHOURS":3})
+    fig.add_trace(go.Scatter(
+        x=df.index, y=y_map, mode='markers',
+        marker=dict(color=[session_colors.get(s,"white") for s in df['Session']],
+                    size=10, symbol="square"),
+        showlegend=False,
+        hovertext=[f"{s} | {t.strftime('%H:%M %d-%m')}" for s,t in zip(df['Session'], df.index)]
+    ), row=timeline_row, col=1)
+    fig.update_yaxes(range=[0.5,3.5], row=timeline_row, col=1, autorange=False)
+
+# -----------------------
+# Volume, Score, RSI, MACD
+# -----------------------
+for r, col in [(volume_row,"Volume"),(score_row,"LongScore"),(rsi_row,"RSI"),(macd_row,"MACD")]:
+    if col in df.columns:
+        if r==volume_row:
+            fig.add_trace(go.Bar(x=df.index, y=df["Volume"], name="Volume"), row=r, col=1)
+        else:
+            fig.add_trace(go.Scatter(x=df.index, y=df[col], name=col), row=r, col=1)
+        fig.update_yaxes(automargin=True, row=r, col=1)
+
+# -----------------------
+# Price Y-Axis Fix (wichtig!)
+# -----------------------
+price_min = df["Low"].min()*0.995
+price_max = df["High"].max()*1.005
+fig.update_yaxes(range=[price_min,price_max], row=price_row, col=1, autorange=False)
+
+# Layout
 fig.update_layout(template="plotly_dark", paper_bgcolor="#0e1117", plot_bgcolor="#0e1117",
                   font=dict(color="#e6e6e6"), hovermode="x unified", xaxis_rangeslider_visible=False,
-                  uirevision="constant", height=height)
-
-for i in range(1, num_rows+1):
+                  uirevision="constant", height=1800)
+for i in range(1,7):
     fig.update_xaxes(showgrid=False, color="#e6e6e6", row=i, col=1)
     fig.update_yaxes(showgrid=True, gridcolor="#1f2937", color="#e6e6e6", row=i, col=1)
 
