@@ -1458,7 +1458,7 @@ macd_row = 6
 titles = ["Price", "Timeline", "Volume", "Score", "RSI", "MACD"]
 
 # Row heights
-row_heights = [0.5, 0.05, 0.1, 0.1, 0.1, 0.15]  # Beispiel: Price groß, Timeline klein, andere mittel
+row_heights = [0.5, 0.05, 0.15, 0.1, 0.1, 0.1]  # Beispiel: Price groß, Timeline klein, andere mittel
 
 
 # Create figure
@@ -1471,6 +1471,25 @@ fig = make_subplots(
     subplot_titles=titles
 )
 
+
+def add_last_value_label(fig, df, column, row, col=1, fmt="{:.2f}"):
+    if column in df.columns and not df.empty:
+        val = df[column].iloc[-1]
+        if not np.isnan(val):
+            fig.add_annotation(
+                x=df.index[-1],
+                y=val,
+                text=fmt.format(val),
+                showarrow=False,
+                xanchor="left",
+                xshift=10,
+                font=dict(size=11),
+                bgcolor="#111827",
+                bordercolor="#333",
+                borderwidth=1,
+                row=row,
+                col=col
+            )
 # -----------------------
 # PRICE CANDLES
 # -----------------------
@@ -1553,6 +1572,18 @@ for sig, marker, col_name in [(df.get("LongSignal"), "triangle-up", "LONG"), (df
             connectgaps=False
         ), row=price_row, col=1)
 
+add_last_value_label(fig, df, "Close", price_row)
+add_last_value_label(fig, df, "EMA20", price_row)
+add_last_value_label(fig, df, "EMA50", price_row)
+add_last_value_label(fig, df, "VWAP_RTH", price_row)
+add_last_value_label(fig, df, "VWAP_upper2", price_row)
+add_last_value_label(fig, df, "VWAP_lower2", price_row)
+add_last_value_label(fig, df, "KC_UPPER", price_row)
+add_last_value_label(fig, df, "KC_MID", price_row)
+add_last_value_label(fig, df, "KC_LOWER", price_row)
+add_last_value_label(fig, df, "BB_UPPER", price_row)
+add_last_value_label(fig, df, "BB_LOWER", price_row)
+add_last_value_label(fig, df, "BB_MID", price_row)
 # -----------------------
 # TIMELINE UNTER PRICE
 # -----------------------
@@ -1599,62 +1630,40 @@ if "Session" in df.columns:
 if "Volume" in df.columns:
     fig.add_trace(go.Bar(x=df.index, y=df["Volume"], name="Volume"),
                   row=volume_row, col=1)
-    fig.add_annotation(
-        x=1.01,  # rechts außerhalb der Achse
-        y=df["Volume"].iloc[-1],
-        xref="paper",
-        yref=f"y{volume_row}",
-        text=f"{df['Volume'].iloc[-1]:.0f}",
-        showarrow=False,
-        xanchor="left",
-        font=dict(size=12)
-    )
+
+    add_last_value_label(fig, df, "Volume", volume_row, fmt="{:.0f}")
 
 # -----------------------
 # SCORE
 # -----------------------
-for col, name in [("LongScore", "Long Score"), ("ShortScore", "Short Score")]:
+for col in ["LongScore", "ShortScore"]:
     if col in df.columns:
-        fig.add_trace(go.Scatter(x=df.index, y=df[col], name=name),
+        fig.add_trace(go.Scatter(x=df.index, y=df[col], name=col),
                       row=score_row, col=1)
-        
-    fig.add_shape(
-    type="line",
-    x0=df.index[0],
-    x1=df.index[-1],
-    y0=5,
-    y1=5,
-    line=dict(dash="dash", color="yellow"),
-    xref="x",
-    yref=f"y{score_row}"
-)
-    fig.update_yaxes(range=[0,8], row=score_row, col=1)
+
+add_last_value_label(fig, df, "LongScore", score_row)
+add_last_value_label(fig, df, "ShortScore", score_row)
 
 # -----------------------
 # RSI
 # -----------------------
 if "RSI" in df.columns:
     fig.add_trace(go.Scatter(x=df.index, y=df["RSI"], name="RSI"),
-                  row=rsi_row, col=1
-    )
-    fig.add_shape(
-        type="line",
-        x0=df.index[0],
-        x1=df.index[-1],
-        y0=30,
-        y1=30,
-        line=dict(dash="dot", color="green"),
-        xref="x",
-        yref=f"y{rsi_row}"
-    )
+                  row=rsi_row, col=1)
+
+    add_last_value_label(fig, df, "RSI", rsi_row, fmt="{:.1f}")
 
 # -----------------------
 # MACD
 # -----------------------
-for col, name in [("MACD", "MACD"), ("MACD_signal", "Signal"), ("MACD_hist", "Histogram")]:
+for col, name in [("MACD", "MACD"), ("MACD_signal", "Signal")]:
     if col in df.columns:
         fig.add_trace(go.Scatter(x=df.index, y=df[col], name=name),
                       row=macd_row, col=1)
+
+add_last_value_label(fig, df, "MACD", macd_row)
+add_last_value_label(fig, df, "MACD_signal", macd_row)
+add_last_value_label(fig, df, "MACD_hist", macd_row)
 # -----------------------
 # SUPPORT / RESISTANCE
 # -----------------------
