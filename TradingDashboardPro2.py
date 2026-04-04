@@ -402,10 +402,6 @@ period = st.sidebar.selectbox(
 
 st.sidebar.caption(f"Aktive Kombi: {interval} / {period}")
 
-
-show_volume = st.sidebar.checkbox("Volume", True)
-show_rsi = st.sidebar.checkbox("RSI", True)
-show_macd = st.sidebar.checkbox("MACD", True)
 # -----------------------
 # DATA
 # -----------------------
@@ -1440,6 +1436,9 @@ resistances = sorted(resistances, key=lambda x: abs(x - current_price))[:5]
 # -----------------------
 
 show_score = True
+show_volume = True
+show_rsi = True
+show_macd = True
 
 current_row = 1
 
