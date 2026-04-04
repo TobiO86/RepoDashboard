@@ -1515,7 +1515,7 @@ fig.add_trace(go.Candlestick(
     name="RTH",
     increasing_line_color='green',
     decreasing_line_color='red'
-))
+),row=price_row, col=1)
 
 # PREMARKET Candles – leicht transparent
 fig.add_trace(go.Candlestick(
@@ -1528,7 +1528,7 @@ fig.add_trace(go.Candlestick(
     increasing_line_color='lightgreen',
     decreasing_line_color='lightcoral',
     opacity=0.5
-))
+),row=price_row, col=1)
 
 # AFTERHOURS Candles – leicht transparent
 fig.add_trace(go.Candlestick(
@@ -1541,7 +1541,7 @@ fig.add_trace(go.Candlestick(
     increasing_line_color='lightblue',
     decreasing_line_color='lightsalmon',
     opacity=0.5
-))
+),row=price_row, col=1)
 
 fig.add_trace(go.Candlestick(
     x=df.index, open=df["Open"], high=df["High"], low=df["Low"], close=df["Close"], name="Price"
@@ -1587,7 +1587,7 @@ fig.add_trace(go.Scatter(x=df.index,y=df["VWAP_upper2"],name="VWAP +2"),row=pric
 fig.add_trace(go.Scatter(x=df.index,y=df["VWAP_lower2"],name="VWAP -2"),row=price_row,col=1)
 
 fig.add_trace(go.Scatter(x=df.index,y=df["KC_UPPER"],name="KC Upper"),row=price_row,col=1)
-fig.add_trace(go.Scatter(x=df.index, y=df["KC_MID"],  line=dict(color="blue", width=1),  name="KC Mid"))
+fig.add_trace(go.Scatter(x=df.index, y=df["KC_MID"],  line=dict(color="blue", width=1),  name="KC Mid"),row=price_row, col=1)
 fig.add_trace(go.Scatter(x=df.index,y=df["KC_LOWER"],name="KC Lower"),row=price_row,col=1)
 session_colors = {
     "PREMARKET": "lightblue",
