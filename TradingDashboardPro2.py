@@ -1435,48 +1435,39 @@ resistances = sorted(resistances, key=lambda x: abs(x - current_price))[:5]
 # SUBPLOTS (FIXED UI)
 # -----------------------
 
+# Sichtbare Indikatoren
 show_score = True
 show_volume = True
 show_rsi = True
 show_macd = True
 
-rows = 1
-
-# Row-Zuweisung
-price_row = 1
-timeline_row = 2
-
-# Dynamische Indikatoren ab Row 3
+# Basis Rows
+titles = ["Price", "Timeline"]
+rows_map = {"Price": 1, "Timeline": 2}
 current_row = 3
-volume_row = current_row if show_volume else None
+
+# Dynamische Row-Zuweisung
 if show_volume:
+    rows_map["Volume"] = current_row
     current_row += 1
-
-score_row = current_row if show_score else None
 if show_score:
+    rows_map["Score"] = current_row
     current_row += 1
-
-rsi_row = current_row if show_rsi else None
 if show_rsi:
+    rows_map["RSI"] = current_row
     current_row += 1
-
-macd_row = current_row if show_macd else None
 if show_macd:
+    rows_map["MACD"] = current_row
     current_row += 1
 
 rows = current_row - 1
 
-titles = ["Price", "Timeline"]
-if show_volume:
-    titles.append("Volume")
-if show_score:
-    titles.append("Score")
-if show_rsi:
-    titles.append("RSI")
-if show_macd:
-    titles.append("MACD")
+# Subplot-Titel
+for key in ["Volume", "Score", "RSI", "MACD"]:
+    if key in rows_map:
+        titles.append(key)
 
-# Beispiel: Hauptchart 0.5, Rest gleichmäßig
+# Row Heights
 main_height = 0.5
 remaining_height = 1 - main_height
 small_height = remaining_height / (rows - 1)
@@ -1490,6 +1481,14 @@ fig = make_subplots(
     row_heights=row_heights,
     subplot_titles=titles
 )
+
+# Beispiel Zugriff auf Row
+price_row = rows_map["Price"]
+timeline_row = rows_map["Timeline"]
+volume_row = rows_map.get("Volume")
+score_row = rows_map.get("Score")
+rsi_row = rows_map.get("RSI")
+macd_row = rows_map.get("MACD")
 
 # -----------------------
 # PRICE
