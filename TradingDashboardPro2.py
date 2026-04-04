@@ -1694,7 +1694,6 @@ for i in range(1, rows+1):
     """, unsafe_allow_html=True)
 
     st.plotly_chart(fig, use_container_width=True, key=key)
-    return fig
 
 # -----------------------
 # ALERT / SIGNAL OUTPUT
