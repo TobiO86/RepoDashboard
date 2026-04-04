@@ -1431,238 +1431,196 @@ current_price = df["Close"].iloc[-1]
 supports = sorted(supports, key=lambda x: abs(x - current_price))[:5]
 resistances = sorted(resistances, key=lambda x: abs(x - current_price))[:5]
 
-def plot_trading_dashboard(df, supports, resistances, current_price, key="main_plot"):
-    """
-    Vollständiger Trading-Dashboard Plot mit allen Subplots:
-    Price, Timeline, Volume, Score, RSI, MACD
-    """
-    # -----------------------
-    # Sichtbare Indikatoren
-    # -----------------------
-    show_score = True
-    show_volume = True
-    show_rsi = True
-    show_macd = True
+# -----------------------
+# SUBPLOTS (FIXED UI)
+# -----------------------
 
-    # -----------------------
-    # Basis Rows
-    # -----------------------
-    titles = ["Price", "Timeline"]
-    rows_map = {"Price": 1, "Timeline": 2}
-    current_row = 3
+# Sichtbare Indikatoren
+show_score = True
+show_volume = True
+show_rsi = True
+show_macd = True
 
-    if show_volume:
-        rows_map["Volume"] = current_row
-        current_row += 1
-    if show_score:
-        rows_map["Score"] = current_row
-        current_row += 1
-    if show_rsi:
-        rows_map["RSI"] = current_row
-        current_row += 1
-    if show_macd:
-        rows_map["MACD"] = current_row
-        current_row += 1
+# Basis Rows
+titles = ["Price", "Timeline"]
+rows_map = {"Price": 1, "Timeline": 2}
+current_row = 3
 
-    rows = current_row - 1
+# Dynamische Row-Zuweisung
+if show_volume:
+    rows_map["Volume"] = current_row
+    current_row += 1
+if show_score:
+    rows_map["Score"] = current_row
+    current_row += 1
+if show_rsi:
+    rows_map["RSI"] = current_row
+    current_row += 1
+if show_macd:
+    rows_map["MACD"] = current_row
+    current_row += 1
 
-    # Subplot-Titel
-    for key_name in ["Volume", "Score", "RSI", "MACD"]:
-        if key_name in rows_map:
-            titles.append(key_name)
+rows = current_row -1
 
-    # Row Heights
-    main_height = 0.5
-    remaining_height = 1 - main_height
-    small_height = remaining_height / (rows - 1)
-    row_heights = [main_height] + [small_height] * (rows - 1)
+# Subplot-Titel
+for key in ["Volume", "Score", "RSI", "MACD"]:
+    if key in rows_map:
+        titles.append(key)
 
-    fig = make_subplots(
-        rows=rows,
-        cols=1,
-        shared_xaxes=True,
-        vertical_spacing=0.03,
-        row_heights=row_heights,
-        subplot_titles=titles
-    )
+# Row Heights
+main_height = 0.5
+remaining_height = 1 - main_height
+small_height = remaining_height / (rows - 1)
+row_heights = [main_height] + [small_height] * (rows - 1)
 
-    # Row-Zuweisungen
-    price_row = rows_map["Price"]
-    timeline_row = rows_map["Timeline"]
-    volume_row = rows_map.get("Volume")
-    score_row = rows_map.get("Score")
-    rsi_row = rows_map.get("RSI")
-    macd_row = rows_map.get("MACD")
+fig = make_subplots(
+    rows=rows,
+    cols=1,
+    shared_xaxes=True,
+    vertical_spacing=0.03,
+    row_heights=row_heights,
+    subplot_titles=titles
+)
 
-    # -----------------------
-    # PRICE & SESSIONS
-    # -----------------------
-    rth_df = df[df["Session"] == "RTH"]
-    pre_df = df[df["Session"] == "PREMARKET"]
-    ah_df  = df[df["Session"] == "AFTERHOURS"]
+# Row-Zuweisungen
+price_row = rows_map["Price"]
+timeline_row = rows_map["Timeline"]
+volume_row = rows_map.get("Volume")
+score_row = rows_map.get("Score")
+rsi_row = rows_map.get("RSI")
+macd_row = rows_map.get("MACD")
 
-    # Candlesticks
-    fig.add_trace(go.Candlestick(
-        x=rth_df.index, open=rth_df["Open"], high=rth_df["High"],
-        low=rth_df["Low"], close=rth_df["Close"],
-        name="RTH", increasing_line_color='green', decreasing_line_color='red'
-    ), row=price_row, col=1)
+# -----------------------
+# PRICE CHART
+# -----------------------
 
-    fig.add_trace(go.Candlestick(
-        x=pre_df.index, open=pre_df["Open"], high=pre_df["High"],
-        low=pre_df["Low"], close=pre_df["Close"],
-        name="PRE", increasing_line_color='lightgreen',
-        decreasing_line_color='lightcoral', opacity=0.5
-    ), row=price_row, col=1)
+rth_df = df[df["Session"]=="RTH"]
+pre_df = df[df["Session"]=="PREMARKET"]
+ah_df  = df[df["Session"]=="AFTERHOURS"]
 
-    fig.add_trace(go.Candlestick(
-        x=ah_df.index, open=ah_df["Open"], high=ah_df["High"],
-        low=ah_df["Low"], close=ah_df["Close"],
-        name="AH", increasing_line_color='lightblue',
-        decreasing_line_color='lightsalmon', opacity=0.5
-    ), row=price_row, col=1)
+# Candles
+fig.add_trace(go.Candlestick(
+    x=rth_df.index,
+    open=rth_df["Open"],
+    high=rth_df["High"],
+    low=rth_df["Low"],
+    close=rth_df["Close"],
+    name="RTH",
+    increasing_line_color='green',
+    decreasing_line_color='red'
+), row=price_row, col=1)
 
-    # VWAPs
-    if not rth_df.empty and "VWAP_RTH" in rth_df.columns:
-        fig.add_trace(go.Scatter(
-            x=rth_df.index, y=rth_df["VWAP_RTH"], name="VWAP_RTH",
-            line=dict(width=3, color="yellow")
-        ), row=price_row, col=1)
+fig.add_trace(go.Candlestick(
+    x=pre_df.index,
+    open=pre_df["Open"],
+    high=pre_df["High"],
+    low=pre_df["Low"],
+    close=pre_df["Close"],
+    name="PRE",
+    increasing_line_color='lightgreen',
+    decreasing_line_color='lightcoral',
+    opacity=0.5
+), row=price_row, col=1)
 
-    if not pre_df.empty and "VWAP_PRE" in pre_df.columns:
-        fig.add_trace(go.Scatter(
-            x=pre_df.index, y=pre_df["VWAP_PRE"], name="VWAP_PRE",
-            line=dict(width=3, color="orange")
-        ), row=price_row, col=1)
+fig.add_trace(go.Candlestick(
+    x=ah_df.index,
+    open=ah_df["Open"],
+    high=ah_df["High"],
+    low=ah_df["Low"],
+    close=ah_df["Close"],
+    name="AH",
+    increasing_line_color='lightblue',
+    decreasing_line_color='lightsalmon',
+    opacity=0.5
+), row=price_row, col=1)
 
-    if not ah_df.empty and "VWAP_AH" in ah_df.columns:
-        fig.add_trace(go.Scatter(
-            x=ah_df.index, y=ah_df["VWAP_AH"], name="VWAP_AH",
-            line=dict(width=3, color="purple")
-        ), row=price_row, col=1)
+# VWAP Linien
+if "VWAP_RTH" in rth_df.columns:
+    fig.add_trace(go.Scatter(x=rth_df.index, y=rth_df["VWAP_RTH"], line=dict(color="yellow", width=3), name="VWAP_RTH"), row=price_row, col=1)
+if "VWAP_PRE" in pre_df.columns:
+    fig.add_trace(go.Scatter(x=pre_df.index, y=pre_df["VWAP_PRE"], line=dict(color="orange", width=3), name="VWAP_PRE"), row=price_row, col=1)
+if "VWAP_AH" in ah_df.columns:
+    fig.add_trace(go.Scatter(x=ah_df.index, y=ah_df["VWAP_AH"], line=dict(color="purple", width=3), name="VWAP_AH"), row=price_row, col=1)
 
-    # EMA / VWAP Channels / Keltner
-    for col_name in ["EMA20", "EMA50", "VWAP_upper2", "VWAP_lower2", "KC_UPPER", "KC_MID", "KC_LOWER"]:
-        if col_name in df.columns:
-            fig.add_trace(go.Scatter(
-                x=df.index, y=df[col_name], name=col_name
-            ), row=price_row, col=1)
+# EMA Linien
+fig.add_trace(go.Scatter(x=df.index, y=df["EMA20"], name="EMA20"), row=price_row, col=1)
+fig.add_trace(go.Scatter(x=df.index, y=df["EMA50"], name="EMA50"), row=price_row, col=1)
 
-    # Timeline Session Markers
-    session_colors = {"PREMARKET": "lightblue", "RTH": "white", "AFTERHOURS": "lightcoral"}
-    fig.add_trace(go.Scatter(
-        x=df.index,
-        y=[0]*len(df),
-        mode='markers',
-        marker=dict(color=[session_colors[s] for s in df['Session']], size=6),
-        showlegend=False,
-        hoverinfo="x+text",
-        text=df['Session']
-    ), row=timeline_row, col=1)
-    fig.update_yaxes(visible=False, row=timeline_row, col=1)
+# Bollinger / Keltner
+fig.add_trace(go.Scatter(x=df.index, y=df["BB_UPPER"], name="BB Upper", line=dict(width=1, dash="dot")), row=price_row, col=1)
+fig.add_trace(go.Scatter(x=df.index, y=df["BB_LOWER"], name="BB Lower", line=dict(width=1, dash="dot")), row=price_row, col=1)
+fig.add_trace(go.Scatter(x=df.index, y=df["BB_MID"], name="BB Mid", line=dict(width=1)), row=price_row, col=1)
 
-    # -----------------------
-    # SUPPORT / RESISTANCE
-    # -----------------------
-    price_range = df["High"].max() - df["Low"].min()
-    filtered_supports = [s for s in supports if abs(s - current_price) < price_range * 0.3] or supports[:2]
-    filtered_resistances = [r for r in resistances if abs(r - current_price) < price_range * 0.3] or resistances[:2]
+fig.add_trace(go.Scatter(x=df.index, y=df["VWAP_upper2"], name="VWAP +2"), row=price_row, col=1)
+fig.add_trace(go.Scatter(x=df.index, y=df["VWAP_lower2"], name="VWAP -2"), row=price_row, col=1)
 
-    for s in filtered_supports:
-        fig.add_hline(y=s, line_dash="dot", line_color="green", line_width=1.5, opacity=0.4, row=price_row, col=1)
-        fig.add_annotation(x=df.index[-1], y=s, text=f"S {s:.0f}", showarrow=False, font=dict(size=14), xanchor="left")
-    for r in filtered_resistances:
-        fig.add_hline(y=r, line_dash="dot", line_color="red", line_width=1.5, opacity=0.4, row=price_row, col=1)
-        fig.add_annotation(x=df.index[-1], y=r, text=f"R {r:.0f}", showarrow=False, font=dict(size=14), xanchor="left")
+fig.add_trace(go.Scatter(x=df.index, y=df["KC_UPPER"], name="KC Upper"), row=price_row, col=1)
+fig.add_trace(go.Scatter(x=df.index, y=df["KC_MID"], name="KC Mid", line=dict(color="blue", width=1)), row=price_row, col=1)
+fig.add_trace(go.Scatter(x=df.index, y=df["KC_LOWER"], name="KC Lower"), row=price_row, col=1)
 
-    # -----------------------
-    # BOLLINGER BANDS
-    # -----------------------
-    for col_name, dash in [("BB_UPPER", "dot"), ("BB_LOWER", "dot"), ("BB_MID", "solid")]:
-        if col_name in df.columns:
-            fig.add_trace(go.Scatter(
-                x=df.index, y=df[col_name], name=col_name,
-                connectgaps=False, line=dict(width=1, dash=dash)
-            ), row=price_row, col=1)
+# Signale
+fig.add_trace(go.Scatter(x=df[df["LongSignal"]].index, y=df[df["LongSignal"]]["Close"], mode="markers", marker=dict(symbol="triangle-up", size=12), name="LONG"), row=price_row, col=1)
+fig.add_trace(go.Scatter(x=df[df["ShortSignal"]].index, y=df[df["ShortSignal"]]["Close"], mode="markers", marker=dict(symbol="triangle-down", size=12), name="SHORT"), row=price_row, col=1)
 
-    # -----------------------
-    # SIGNALS
-    # -----------------------
-    if "LongSignal" in df.columns:
-        fig.add_trace(go.Scatter(x=df[df["LongSignal"]].index, y=df[df["LongSignal"]]["Close"],
-                                 mode="markers", marker=dict(symbol="triangle-up", size=12),
-                                 name="LONG", connectgaps=False), row=price_row, col=1)
-    if "ShortSignal" in df.columns:
-        fig.add_trace(go.Scatter(x=df[df["ShortSignal"]].index, y=df[df["ShortSignal"]]["Close"],
-                                 mode="markers", marker=dict(symbol="triangle-down", size=12),
-                                 name="SHORT", connectgaps=False), row=price_row, col=1)
+# Timeline
+session_colors = {"PREMARKET": "lightblue", "RTH": "white", "AFTERHOURS": "lightcoral"}
+fig.add_trace(go.Scatter(
+    x=df.index,
+    y=[0]*len(df),
+    mode="markers",
+    marker=dict(color=[session_colors[s] for s in df["Session"]], size=6),
+    showlegend=False,
+    text=df["Session"],
+    hoverinfo="x+text"
+), row=timeline_row, col=1)
+fig.update_yaxes(visible=False, row=timeline_row, col=1)
 
-    # -----------------------
-    # VOLUME
-    # -----------------------
-    if show_volume and volume_row is not None and "Volume" in df.columns:
-        fig.add_trace(go.Bar(x=df.index, y=df["Volume"], name="Volume"), row=volume_row, col=1)
-        fig.add_annotation(x=df.index[-1], y=df["Volume"].iloc[-1],
-                           text=f"Vol {df['Volume'].iloc[-1]:.0f}", showarrow=False, xanchor="left",
-                           row=volume_row, col=1, font=dict(size=14))
+# -----------------------
+# VOLUME
+# -----------------------
+if show_volume and volume_row is not None:
+    fig.add_trace(go.Bar(x=df.index, y=df["Volume"], name="Volume"), row=volume_row, col=1)
 
-    # -----------------------
-    # RSI
-    # -----------------------
-    if show_rsi and rsi_row is not None and "RSI" in df.columns:
-        fig.add_trace(go.Scatter(x=df.index, y=df["RSI"], name="RSI"), row=rsi_row, col=1)
-        fig.add_hline(y=70, line_dash="dot", row=rsi_row, col=1)
-        fig.add_hline(y=30, line_dash="dot", row=rsi_row, col=1)
-        fig.add_annotation(x=df.index[-1], y=df["RSI"].iloc[-1],
-                           text=f"RSI {df['RSI'].iloc[-1]:.1f}", showarrow=False, xanchor="left", row=rsi_row, col=1, yshift=20, font=dict(size=14))
+# -----------------------
+# SCORE
+# -----------------------
+if show_score and score_row is not None:
+    fig.add_trace(go.Scatter(x=df.index, y=df["LongScore"], name="Long Score", line=dict(width=1, dash="dot")), row=score_row, col=1)
+    fig.add_trace(go.Scatter(x=df.index, y=df["ShortScore"], name="Short Score", line=dict(width=1, dash="dot")), row=score_row, col=1)
+    fig.add_hline(y=5, line_dash="dash", row=score_row, col=1)
+    fig.update_yaxes(range=[0,8], row=score_row, col=1)
 
-    # -----------------------
-    # MACD
-    # -----------------------
-    if show_macd and macd_row is not None and "MACD" in df.columns:
-        fig.add_trace(go.Scatter(x=df.index, y=df["MACD"], name="MACD"), row=macd_row, col=1)
-        fig.add_trace(go.Scatter(x=df.index, y=df["MACD_signal"], name="Signal"), row=macd_row, col=1)
-        fig.add_trace(go.Bar(x=df.index, y=df["MACD_hist"], name="Histogram"), row=macd_row, col=1)
-        fig.add_annotation(x=df.index[-1], y=df["MACD"].iloc[-1], text=f"MACD {df['MACD'].iloc[-1]:.2f}", showarrow=False, xanchor="left", row=macd_row, col=1, yshift=10)
-        fig.add_annotation(x=df.index[-1], y=df["MACD_signal"].iloc[-1], text=f"Signal {df['MACD_signal'].iloc[-1]:.2f}", showarrow=False, xanchor="left", row=macd_row, col=1, yshift=30)
+# -----------------------
+# RSI
+# -----------------------
+if show_rsi and rsi_row is not None:
+    fig.add_trace(go.Scatter(x=df.index, y=df["RSI"], name="RSI"), row=rsi_row, col=1)
+    fig.add_hline(y=70, line_dash="dot", row=rsi_row, col=1)
+    fig.add_hline(y=30, line_dash="dot", row=rsi_row, col=1)
 
-    # -----------------------
-    # SCORE
-    # -----------------------
-    if show_score and score_row is not None:
-        for col_name, dash in [("LongScore", "dot"), ("ShortScore", "dot"), ("ScoreDelta", "solid"), ("Spread", "solid")]:
-            if col_name in df.columns:
-                fig.add_trace(go.Scatter(x=df.index, y=df[col_name], name=col_name, line=dict(dash=dash)), row=score_row, col=1)
-        fig.add_hline(y=5, line_dash="dash", row=score_row, col=1)
-        fig.update_yaxes(range=[0, 8], row=score_row, col=1)
+# -----------------------
+# MACD
+# -----------------------
+if show_macd and macd_row is not None:
+    fig.add_trace(go.Scatter(x=df.index, y=df["MACD"], name="MACD"), row=macd_row, col=1)
+    fig.add_trace(go.Scatter(x=df.index, y=df["MACD_signal"], name="Signal"), row=macd_row, col=1)
+    fig.add_trace(go.Bar(x=df.index, y=df["MACD_hist"], name="Histogram"), row=macd_row, col=1)
 
-    # -----------------------
-    # LAYOUT
-    # -----------------------
-    height = 400 + rows * 250
-    fig.update_layout(
-        template="plotly_dark",
-        paper_bgcolor="#0e1117",
-        plot_bgcolor="#0e1117",
-        font=dict(color="#e6e6e6"),
-        hovermode="x unified",
-        xaxis_rangeslider_visible=False,
-        uirevision="constant",
-        height=height,
-        legend=dict(font=dict(color="#f3f4f6", size=12),
-                    bgcolor="#111827", bordercolor="#1f2937", borderwidth=1,
-                    orientation="v", xanchor="left", x=1.02, yanchor="top", y=1, traceorder="normal")
-    )
-
-    # Alle Subplots Achsen
-    for i in range(1, rows+1):
-        fig.update_xaxes(showgrid=False, color="#e6e6e6", row=i, col=1)
-        fig.update_yaxes(showgrid=True, gridcolor="#1f2937", color="#e6e6e6", row=i, col=1)
-
-    # -----------------------
-    # RETURN / STREAMLIT
-    # -----------------------
-
+# -----------------------
+# LAYOUT
+# -----------------------
+height = 400 + (rows * 250)
+fig.update_layout(
+    template="plotly_dark",
+    paper_bgcolor="#0e1117",
+    plot_bgcolor="#0e1117",
+    font=dict(color="#e6e6e6"),
+    hovermode="x unified",
+    xaxis_rangeslider_visible=False
+)
+for i in range(1, rows+1):
+    fig.update_xaxes(showgrid=False, color="#e6e6e6", row=i, col=1)
+    fig.update_yaxes(showgrid=True, gridcolor="#1f2937", color="#e6e6e6", row=i, col=1)
 
     st.markdown("""
     <style>
