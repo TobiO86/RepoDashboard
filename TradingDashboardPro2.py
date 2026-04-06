@@ -1546,11 +1546,47 @@ for r in resistances:
                   annotation_text=f"R {r:.2f}", annotation_position="top left")
 
 # -----------------------
+# SL / TP LINES
+# -----------------------
+last_sl = df["SL"].iloc[-1]
+last_tp = df["TP"].iloc[-1]
+
+if not np.isnan(last_sl):
+    fig.add_hline(
+        y=last_sl,
+        line_dash="dot",
+        line_color="red",
+        row=price_row, col=1,
+        annotation_text=f"SL {last_sl:.2f}",
+        annotation_position="bottom right"
+    )
+
+if not np.isnan(last_tp):
+    fig.add_hline(
+        y=last_tp,
+        line_dash="dot",
+        line_color="green",
+        row=price_row, col=1,
+        annotation_text=f"TP {last_tp:.2f}",
+        annotation_position="top right"
+    )
+
+# -----------------------
 # VOLUME
 # -----------------------
 if "Volume" in df.columns:
     fig.add_trace(go.Bar(x=df.index, y=df["Volume"], name="Volume"), row=volume_row, col=1)
 
+    last_vol = df["Volume"].iloc[-1]
+
+    fig.add_annotation(
+        x=df.index[-1],
+        y=last_vol,
+        text=f"Vol {last_vol:.0f}",
+        showarrow=False,
+        xanchor="left",
+        row=volume_row, col=1
+    )
 # -----------------------
 # SCORE
 # -----------------------
@@ -1561,6 +1597,25 @@ if "LongScore" in df.columns and "ShortScore" in df.columns:
                              line=dict(width=1, dash="dot")), row=score_row, col=1)
     fig.add_hline(y=5, line_dash="dash", row=score_row, col=1)
     fig.update_yaxes(range=[0,8], row=score_row, col=1)
+    
+    last_long_score = df["LongScore"].iloc[-1]
+    last_short_score = df["ShortScore"].iloc[-1]
+
+    fig.add_annotation(
+        x=df.index[-1],
+        y=last_long_score,
+        text=f"L {last_long_score:.1f}",
+        showarrow=False,
+        row=score_row, col=1
+    )
+
+    fig.add_annotation(
+        x=df.index[-1],
+        y=last_short_score,
+        text=f"S {last_short_score:.1f}",
+        showarrow=False,
+        row=score_row, col=1
+    )
 
 # -----------------------
 # RSI
@@ -1569,6 +1624,16 @@ if "RSI" in df.columns:
     fig.add_trace(go.Scatter(x=df.index, y=df["RSI"], name="RSI"), row=rsi_row, col=1)
     fig.add_hline(y=70, line_dash="dot", row=rsi_row, col=1)
     fig.add_hline(y=30, line_dash="dot", row=rsi_row, col=1)
+    
+    last_rsi = df["RSI"].iloc[-1]
+
+    fig.add_annotation(
+        x=df.index[-1],
+        y=last_rsi,
+        text=f"RSI {last_rsi:.1f}",
+        showarrow=False,
+        row=rsi_row, col=1
+    )
 
 # -----------------------
 # MACD
@@ -1578,6 +1643,24 @@ if "MACD" in df.columns and "MACD_signal" in df.columns and "MACD_hist" in df.co
     fig.add_trace(go.Scatter(x=df.index, y=df["MACD_signal"], name="Signal"), row=macd_row, col=1)
     fig.add_trace(go.Bar(x=df.index, y=df["MACD_hist"], name="Histogram"), row=macd_row, col=1)
 
+    last_macd = df["MACD"].iloc[-1]
+    last_signal = df["MACD_signal"].iloc[-1]
+
+    fig.add_annotation(
+        x=df.index[-1],
+        y=last_macd,
+        text=f"M {last_macd:.2f}",
+        showarrow=False,
+        row=macd_row, col=1
+    )
+
+    fig.add_annotation(
+        x=df.index[-1],
+        y=last_signal,
+        text=f"S {last_signal:.2f}",
+        showarrow=False,
+        row=macd_row, col=1
+    )
 # -----------------------
 # LAYOUT
 # -----------------------
