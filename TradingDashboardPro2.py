@@ -1694,7 +1694,7 @@ short_score = df["ShortScore"].iloc[-1]
 
 confidence = max(long_score, short_score)
 
-st.metric("Signal Strength", round(confidence, 2))
+st.metric("Signal Strength", round(confidence, 2),"LongScore: {long_score:.2f}","ShortScore: {short_score:.2f}")
 
 if last_long:
     st.success(f"🚀 SMART LONG | Score: {long_score:.2f}")
