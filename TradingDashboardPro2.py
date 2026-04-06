@@ -1696,9 +1696,22 @@ confidence = max(long_score, short_score)
 
 col20, col21, col22 = st.columns(3)
 
-col20.metric("Signal Strength", round(confidence, 2))
-col21.metric("LongScore: {long_score:.2f}")
-col22.metric("ShortScore: {short_score:.2f}")
+col20.metric(
+    "Signal Strength",
+    f"{confidence:.2f}"
+)
+
+col21.metric(
+    "Long Score",
+    f"{long_score:.2f}",
+    delta=f"{long_score - short_score:.2f}"
+)
+
+col22.metric(
+    "Short Score",
+    f"{short_score:.2f}",
+    delta=f"{short_score - long_score:.2f}"
+)
 
 if last_long:
     st.success(f"🚀 SMART LONG | Score: {long_score:.2f}")
