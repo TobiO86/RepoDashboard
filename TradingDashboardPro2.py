@@ -1596,10 +1596,10 @@ fig.update_layout(
 # X-Achse NUR beim Price Chart anzeigen
 for i in range(1, rows+1):
     if i == price_row:
-        fig.update_xaxes(showticklabels=True, showspikes=True, spikemode="across", row=i, col=1)
+        fig.update_xaxes(showticklabels=True, showspikes=True, rangebreaks=[dict(bounds=["sat", "mon"])], spikemode="across", row=i, col=1)
         fig.update_yaxes(showspikes=True)
     else:
-        fig.update_xaxes(showticklabels=False, showspikes=True, spikemode="across", row=i, col=1)  
+        fig.update_xaxes(showticklabels=False, showspikes=True, rangebreaks=[dict(bounds=["sat", "mon"])], spikemode="across", row=i, col=1)  
         fig.update_yaxes(showspikes=True)
         
         
@@ -1691,9 +1691,9 @@ last_long = df["LongSignal"].iloc[-1]
 last_short = df["ShortSignal"].iloc[-1]
 
 if last_long:
-    st.success("🚀 SMART LONG (Score-based Setup)")
+    st.success("🚀 SMART LONG (Score-based Setup),{last_long:.2f}")
 elif last_short:
-    st.error("🔻 SMART SHORT (Score-based Setup)")
+    st.error("🔻 SMART SHORT (Score-based Setup),{last_short:.2f}")
 else:
     st.info("NO HIGH PROBABILITY SETUP")
     
