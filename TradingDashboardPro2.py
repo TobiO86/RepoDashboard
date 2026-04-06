@@ -1691,9 +1691,9 @@ last_long = df["LongSignal"].iloc[-1]
 last_short = df["ShortSignal"].iloc[-1]
 
 if last_long:
-    st.success("🚀 SMART LONG (Score-based Setup),{last_long:.2f}")
+    st.success("🚀 SMART LONG (Score-based Setup)",last_long)
 elif last_short:
-    st.error("🔻 SMART SHORT (Score-based Setup),{last_short:.2f}")
+    st.error("🔻 SMART SHORT (Score-based Setup)",last_short)
 else:
     st.info("NO HIGH PROBABILITY SETUP")
     
