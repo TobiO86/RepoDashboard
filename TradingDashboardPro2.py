@@ -1096,67 +1096,50 @@ for i in range(start, len(df)):
     df.at[df.index[i], "LongScore"] = score_long
     df.at[df.index[i], "ShortScore"] = score_short
        
-    if (
-        score_long  >= 6 and
-        df["MarketRegime"].iloc[i] == "TREND"
-    ):
-        df.at[df.index[i], "LongSignal"] = True
 
-    elif (
-        score_short  >= 6 and
-        df["MarketRegime"].iloc[i] == "TREND"
-    ):
-        df.at[df.index[i], "ShortSignal"] = True
-
-    # RANGE MODE
-    elif (
-        score_long  >= 5 and
-        df["MarketRegime"].iloc[i] == "RANGE"
-    ):
-        df.at[df.index[i], "LongSignal"] = True
-
-    elif (
-        score_short >= 5 and
-        df["MarketRegime"].iloc[i] == "RANGE"
-    ):
-        df.at[df.index[i], "ShortSignal"] = True 
-    
-    
-     
 # -----------------------
-# HIGH PROBABILITY FILTER
+# SIGNAL GENERATION (FIXED)
 # -----------------------
-
-HIGH_PROB_MODE = True
-SCORE_THRESHOLD = 5
 
 df["ScoreDelta"] = df["LongScore"] - df["ShortScore"]
 
+df["LongSignal"] = False
+df["ShortSignal"] = False
+
 start = max(2, len(df) - 100)
+
+MIN_SCORE = 5
+DELTA_THRESHOLD = 2
 
 for i in range(start, len(df)):
 
-    if HIGH_PROB_MODE:
-        if (
-            df["LongScore"].iloc[i] >= SCORE_THRESHOLD and
-            df["ScoreDelta"].iloc[i] > 1
-        ):
+    long_score = df["LongScore"].iloc[i]
+    short_score = df["ShortScore"].iloc[i]
+    delta = long_score - short_score
+
+    if i > start:
+        prev_long = df["LongSignal"].iloc[i-1]
+        prev_short = df["ShortSignal"].iloc[i-1]
+
+        if prev_long and long_score >= short_score:
             df.at[df.index[i], "LongSignal"] = True
+            continue
 
-        if (
-            df["ShortScore"].iloc[i] >= SCORE_THRESHOLD and
-            df["ScoreDelta"].iloc[i] < -1
-        ):
+        if prev_short and short_score >= long_score:
             df.at[df.index[i], "ShortSignal"] = True
+            continue
 
-    else:
-        if df["LongScore"].iloc[i] >= 4:
-            df.at[df.index[i], "LongSignal"] = True
+    # Mindestqualität
+    if max(long_score, short_score) < MIN_SCORE:
+        continue
 
-        if df["ShortScore"].iloc[i] >= 4:
-            df.at[df.index[i], "ShortSignal"] = True
+    # Entscheidung
+    if long_score > short_score and delta >= DELTA_THRESHOLD:
+        df.at[df.index[i], "LongSignal"] = True
 
-
+    elif short_score > long_score and delta <= -DELTA_THRESHOLD:
+        df.at[df.index[i], "ShortSignal"] = True
+        
 # -----------------------
 # SL / TP
 # -----------------------
