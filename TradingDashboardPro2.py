@@ -1689,13 +1689,23 @@ st.plotly_chart(fig, use_container_width=True,
 
 last_long = df["LongSignal"].iloc[-1]
 last_short = df["ShortSignal"].iloc[-1]
+long_score = df["LongScore"].iloc[-1]
+short_score = df["ShortScore"].iloc[-1]
+
+confidence = max(long_score, short_score)
+
+st.metric("Signal Strength", round(confidence, 2))
 
 if last_long:
-    st.success("🚀 SMART LONG (Score-based Setup)",last_long)
+    st.success(f"🚀 SMART LONG | Score: {long_score:.2f}")
+
 elif last_short:
-    st.error("🔻 SMART SHORT (Score-based Setup)",last_short)
+    st.error(f"🔻 SMART SHORT | Score: {short_score:.2f}")
+
 else:
-    st.info("NO HIGH PROBABILITY SETUP")
+    st.info(
+        f"No Setup → Long: {long_score:.2f} | Short: {short_score:.2f}"
+    )
     
 # -----------------------
 # TELEGRAM ALERTS
