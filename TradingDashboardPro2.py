@@ -1141,24 +1141,72 @@ for i in range(start, len(df)):
         df.at[df.index[i], "ShortSignal"] = True
         
 # -----------------------
-# SL / TP
+# SL / TP (SMART VERSION)
 # -----------------------
+
+def calculate_sl_tp(df, i, rr_target=2):
+    price = df["Close"].iloc[i]
+    atr = df["ATR"].iloc[i]
+    vwap = df["VWAP_RTH"].iloc[i]
+
+    if df["LongSignal"].iloc[i]:
+        swing_low = df["Low"].iloc[max(0, i-10):i].min()  # letzte Struktur
+        sl_vwap = vwap - atr * 0.5                        # VWAP-Puffer
+        sl = min(swing_low, sl_vwap)
+        tp = price + (price - sl) * rr_target
+        return sl, tp
+
+    elif df["ShortSignal"].iloc[i]:
+        swing_high = df["High"].iloc[max(0, i-10):i].max()
+        sl_vwap = vwap + atr * 0.5
+        sl = max(swing_high, sl_vwap)
+        tp = price - (sl - price) * rr_target
+        return sl, tp
+
+    else:
+        return None, None 
 
 df["SL"] = np.nan
 df["TP"] = np.nan
 
-for i in range(1, len(df)):
-    if df["LongSignal"].iloc[i]:
-        entry = df["Close"].iloc[i]
-        atr = df["ATR"].iloc[i]
-        df.at[df.index[i], "SL"] = entry - atr * 1.5
-        df.at[df.index[i], "TP"] = entry + atr * 2.5
+ATR_MULT_SL = 1.5
+ATR_MULT_TP = 2.5
 
-    if df["ShortSignal"].iloc[i]:
-        entry = df["Close"].iloc[i]
-        atr = df["ATR"].iloc[i]
-        df.at[df.index[i], "SL"] = entry + atr * 1.5
-        df.at[df.index[i], "TP"] = entry - atr * 2.5
+for i in range(1, len(df)):
+
+    price = df["Close"].iloc[i]
+    atr = df["ATR"].iloc[i]
+
+    new_long = df["LongSignal"].iloc[i] and not df["LongSignal"].iloc[i-1]
+    new_short = df["ShortSignal"].iloc[i] and not df["ShortSignal"].iloc[i-1]
+
+    # 1) Neue Signale → Standard SL/TP
+    if new_long:
+        df.at[df.index[i], "SL"] = price - atr * ATR_MULT_SL
+        df.at[df.index[i], "TP"] = price + atr * ATR_MULT_TP
+
+    elif new_short:
+        df.at[df.index[i], "SL"] = price + atr * ATR_MULT_SL
+        df.at[df.index[i], "TP"] = price - atr * ATR_MULT_TP
+
+    # 2) Trailing SL
+    if df["LongSignal"].iloc[i-1]:
+        prev_sl = df["SL"].iloc[i-1]
+        new_sl = price - atr * 1.2
+        df.at[df.index[i], "SL"] = max(prev_sl, new_sl)
+
+    if df["ShortSignal"].iloc[i-1]:
+        prev_sl = df["SL"].iloc[i-1]
+        new_sl = price + atr * 1.2
+        df.at[df.index[i], "SL"] = min(prev_sl, new_sl)
+
+    # 3) SMART SL/TP (optional, kann Trailing überschreiben)
+    if df["LongSignal"].iloc[i] or df["ShortSignal"].iloc[i]:
+        sl, tp = calculate_sl_tp(df, i)
+        if sl is not None and tp is not None:
+            df.at[df.index[i], "SL"] = sl
+            df.at[df.index[i], "TP"] = tp
+        
 
 # -----------------------
 # PRICE METRICS
