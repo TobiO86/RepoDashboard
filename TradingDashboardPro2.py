@@ -715,7 +715,7 @@ def compute_vwap_suite(df):
     tp = (df["High"] + df["Low"] + df["Close"]) / 3
 
     # --- RTH VWAP ---
-    df["vol_rth"] = np.where(df["Session"] == "RTH", df["Volume"], 0)
+    df["Vol_RTH"] = np.where(df["Session"] == "RTH", df["Volume"], np.nan)
     df["pv_rth"] = tp * df["vol_rth"]
 
     df["cum_vol_rth"] = df.groupby(df.index.date)["vol_rth"].cumsum()
@@ -771,7 +771,7 @@ df["Trend_Long"] = df["+DI"] > df["-DI"]
 df["Trend_Short"] = df["-DI"] > df["+DI"]
 
 df["Vol_Current"] = df["Volume"]
-df["Vol_Avg"] = df["Volume"].rolling(20).mean()
+df["Vol_Avg"] = pd.Series(df["Vol_RTH"]).rolling(20, min_periods=5).mean()
 
 df["Daily_High"] = df["High"].rolling("1D").max()
 df["Daily_Low"] = df["Low"].rolling("1D").min()
@@ -1061,7 +1061,7 @@ for i in range(start, len(df)):
 
     # --- NEU: KC Trend ---
     if curr["KC_Above"]:
-        score_long += 1
+        score_long += 1   
 
     # --- NEU: Trend Strength ---
     if curr["Trend_Strong"] and curr["Trend_Long"]:
@@ -1260,6 +1260,8 @@ df["EMA200"] = df["Close"].ewm(span=200, adjust=False).mean()
 # Volumen
 df["Vol_Current"] = df["Volume"]
 df["Vol_Avg"] = df["Volume"].rolling(20).mean()
+df["Volume"] = df["Volume"].replace(0, np.nan)
+df["Volume"] = df["Volume"].ffill()
 
 # Daily High / Low
 df["Daily_High"] = df["High"].rolling("1D").max()
@@ -1352,7 +1354,13 @@ col8, col9, col10 = st.columns(3)
 rsi_last = df["RSI"].iloc[-1]
 col8.metric("RSI  \n  (relative strength index)", f"{rsi_last:.2f}")
 
-volume_value = round(df["Vol_Current"].iloc[-1], 2)
+def safe_metric(val):
+    if pd.isna(val) or np.isinf(val):
+        return 0
+    return float(val)
+
+volume_value = safe_metric(df["Vol_Current"].iloc[-1])
+volume_average = safe_metric(df["Vol_Avg"].iloc[-1])
 col9.metric("Vol_Current", volume_value)
 
 # Optional: andere Metriken daneben
