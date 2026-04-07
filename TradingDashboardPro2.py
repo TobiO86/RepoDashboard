@@ -1199,14 +1199,18 @@ for i in range(1, len(df)):
     new_long = df["LongSignal"].iloc[i] and not df["LongSignal"].iloc[i-1]
     new_short = df["ShortSignal"].iloc[i] and not df["ShortSignal"].iloc[i-1]
 
-    # 1) Neue Signale → Standard SL/TP
+    # 1) Neue Signale → NUR HIER initial SL/TP setzen
     if new_long:
-        df.at[df.index[i], "SL"] = price - atr * ATR_MULT_SL
-        df.at[df.index[i], "TP"] = price + atr * ATR_MULT_TP
+        sl, tp = calculate_sl_tp(df, i)
+        if sl is not None:
+            df.at[df.index[i], "SL"] = sl
+            df.at[df.index[i], "TP"] = tp
 
     elif new_short:
-        df.at[df.index[i], "SL"] = price + atr * ATR_MULT_SL
-        df.at[df.index[i], "TP"] = price - atr * ATR_MULT_TP
+        sl, tp = calculate_sl_tp(df, i)
+        if sl is not None:
+            df.at[df.index[i], "SL"] = sl
+            df.at[df.index[i], "TP"] = tp
 
     # 2) Trailing SL
     if df["LongSignal"].iloc[i-1]:
@@ -1218,15 +1222,7 @@ for i in range(1, len(df)):
         prev_sl = df["SL"].iloc[i-1]
         new_sl = price + atr * 1.2
         df.at[df.index[i], "SL"] = min(prev_sl, new_sl)
-
-    # 3) SMART SL/TP (optional, kann Trailing überschreiben)
-    if df["LongSignal"].iloc[i] or df["ShortSignal"].iloc[i]:
-        sl, tp = calculate_sl_tp(df, i)
-        if sl is not None and tp is not None:
-            df.at[df.index[i], "SL"] = sl
-            df.at[df.index[i], "TP"] = tp
         
-
 # -----------------------
 # PRICE METRICS
 # -----------------------
@@ -1253,9 +1249,18 @@ if not rth_df.empty:
 else:
     # fallback, z.B. letzte verfügbare Kerze
     last_rth_price = df["Close"].iloc[-1]
+    
+def last_valid(series):
+    try:
+        return float(series.dropna().iloc[-1])
+    except:
+        return 0.0
 
-# 2️⃣ Aktueller Preis (Premarket / Afterhours / letzte Kerze)
-current_price = df_fast["Close"].iloc[-1]
+# Absicherung
+if df_fast.empty or "Close" not in df_fast.columns:
+    current_price = 0.0
+else:
+    current_price = last_valid(df_fast["Close"])
 
 # 3️⃣ Delta vom Last Price zum aktuellen Preis
 delta_price = last_rth_price -current_price
