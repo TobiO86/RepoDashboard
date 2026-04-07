@@ -156,11 +156,12 @@ def scan_market(limit=100):
                 for ticker in chunk:
                     df = d.get(ticker)
                     if df is not None and not df.empty:
-                        data_all[ticker] = df.dropna()
+                        data_all[ticker] = df.dropna(subset=["Close"])
             else:
                 data_all[chunk[0]] = d.dropna()
         except:
             continue
+
 
     # --- Scan ---
     for s in symbols:
@@ -169,6 +170,12 @@ def scan_market(limit=100):
             continue
 
         try:
+            df["Session"] = "RTH"  # einfacher Fallback (Scanner nutzt keine echten Sessions)
+
+            df = mark_premarket(df)
+
+            df["Vol_RTH"] = np.where(df["Session"] == "RTH", df["Volume"], np.nan)
+            df["Vol_Avg_RTH"] = df["Vol_RTH"].rolling(20, min_periods=5).mean()
             df["VWAP_RTH"] = (df["Close"] * df["Volume"]).groupby(df.index.date).cumsum() / df["Volume"].groupby(df.index.date).cumsum()
             ema20 = df["Close"].ewm(span=20).mean()
             ema50 = df["Close"].ewm(span=50).mean()
@@ -177,7 +184,7 @@ def scan_market(limit=100):
             price = df["Close"].iloc[-1]
 
             # --- Liquidity ---
-            avg_vol = df["Volume"].rolling(20).mean().iloc[-1]
+            avg_vol = df["Vol_Avg_RTH"].iloc[-1]
             dollar_vol = price * avg_vol
 
             if dollar_vol < 10_000_000:
@@ -497,7 +504,7 @@ def load_data_with_premarket(symbol, period, interval):
     )
     if isinstance(df.columns, pd.MultiIndex):
         df.columns = df.columns.get_level_values(0)
-    return df.dropna()
+    return df.dropna(subset=["Close"])
 
 et = pytz.timezone("US/Eastern")
 
@@ -620,6 +627,13 @@ if df.empty:
 
 # 3️⃣ Premarket markieren
 df = mark_premarket(df)
+
+# -----------------------
+# VOLUME CLEAN (FIX)
+# -----------------------
+df["Vol_RTH"] = np.where(df["Session"] == "RTH", df["Volume"], np.nan)
+df["Vol_Avg_RTH"] = df["Vol_RTH"].rolling(20, min_periods=5).mean()
+
 # Sicherstellen, dass Spalte existiert
 if "EU_Close" not in df.columns:
     df["EU_Close"] = np.nan
@@ -715,13 +729,13 @@ def compute_vwap_suite(df):
     tp = (df["High"] + df["Low"] + df["Close"]) / 3
 
     # --- RTH VWAP ---
-    df["Vol_RTH"] = np.where(df["Session"] == "RTH", df["Volume"], np.nan)
-    df["pv_rth"] = tp * df["vol_rth"]
+    df["Vol_RTH"] = np.where(df["Session"] == "RTH", df["Volume"], 0)
 
-    df["cum_vol_rth"] = df.groupby(df.index.date)["vol_rth"].cumsum()
+    df["pv_rth"] = tp * df["Vol_RTH"]
+    df["cum_vol_rth"] = df.groupby(df.index.date)["Vol_RTH"].cumsum()
     df["cum_pv_rth"] = df.groupby(df.index.date)["pv_rth"].cumsum()
 
-    df["VWAP_RTH"] = df["cum_pv_rth"] / df["cum_vol_rth"]
+    df["VWAP_RTH"] = df["cum_pv_rth"] / df["cum_vol_rth"].replace(0, np.nan)
 
     # --- PREMARKET VWAP ---
     df["vol_pre"] = np.where(df["Session"] == "PREMARKET", df["Volume"], 0)
@@ -770,8 +784,13 @@ df["Trend_Strong"] = df["ADX"] > 25
 df["Trend_Long"] = df["+DI"] > df["-DI"]
 df["Trend_Short"] = df["-DI"] > df["+DI"]
 
+# echtes Volumen
 df["Vol_Current"] = df["Volume"]
-df["Vol_Avg"] = pd.Series(df["Vol_RTH"]).rolling(20, min_periods=5).mean()
+
+# Average NUR auf echte Daten (keine 0!)
+vol_clean = df["Volume"].replace(0, np.nan)
+
+df["Vol_Avg"] = vol_clean.rolling(20, min_periods=5).mean()
 
 df["Daily_High"] = df["High"].rolling("1D").max()
 df["Daily_Low"] = df["Low"].rolling("1D").min()
@@ -866,7 +885,7 @@ df["sweep_high"] = df["High"] > df["high_max"].shift(1)
 df["sweep_low"] = df["Low"] < df["low_min"].shift(1)
 
 df["vol_mean"] = df["Volume"].rolling(20).mean()
-df["vol_spike"] = df["Volume"] > df["vol_mean"] * 1.5
+df["vol_spike"] = df["Volume"] > df["Vol_Avg_RTH"] * 1.5
 
 df["SellNewsShort"] = False
 df["SellNewsLong"] = False
@@ -1360,7 +1379,7 @@ def safe_metric(val):
     return float(val)
 
 volume_value = safe_metric(df["Vol_Current"].iloc[-1])
-volume_average = safe_metric(df["Vol_Avg"].iloc[-1])
+volume_average = safe_metric(df["Vol_Avg_RTH"].iloc[-1])
 col9.metric("Vol_Current", volume_value)
 
 # Optional: andere Metriken daneben
