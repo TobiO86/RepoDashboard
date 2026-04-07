@@ -1414,53 +1414,108 @@ st.caption(f"Session: {SESSION}")
 # -----------------------
 # SUPPORT / RESISTANCE
 # -----------------------
+def detect_levels_pro(df, window=10, tolerance=0.002):
+    supports = []
+    resistances = []
 
-def detect_levels(df,window=10):
-    supports=[]
-    resistances=[]
-    lows=df["Low"].to_numpy()
-    highs=df["High"].to_numpy()
+    lows = df["Low"].to_numpy()
+    highs = df["High"].to_numpy()
+    times = np.arange(len(df))
 
-    for i in range(window,len(df)-window):
+    # -----------------------
+    # 1. SWING DETECTION
+    # -----------------------
+    for i in range(window, len(df) - window):
         if lows[i] == min(lows[i-window:i+window]):
-            supports.append(lows[i])
+            supports.append((lows[i], i))
         if highs[i] == max(highs[i-window:i+window]):
-            resistances.append(highs[i])
-    return supports,resistances
+            resistances.append((highs[i], i))
 
-def clean_levels(levels,threshold=0.002):
-    filtered=[]
-    for l in sorted(levels):
-        if not any(abs(l-f)/f < threshold for f in filtered):
-            filtered.append(l)
-    return filtered
+    # -----------------------
+    # 2. CLUSTER LEVELS
+    # -----------------------
+    def cluster_levels(levels):
+        clustered = []
+        for price, idx in levels:
+            found = False
+            for c in clustered:
+                if abs(price - c["price"]) / c["price"] < tolerance:
+                    c["touches"] += 1
+                    c["last_touch"] = idx
+                    c["price"] = (c["price"] + price) / 2
+                    found = True
+                    break
+            if not found:
+                clustered.append({
+                    "price": price,
+                    "touches": 1,
+                    "last_touch": idx
+                })
+        return clustered
 
-df = df.replace([np.inf, -np.inf], np.nan)
+    sup_cluster = cluster_levels(supports)
+    res_cluster = cluster_levels(resistances)
 
-# Variante 1: direkt auf df
-df = df.bfill().ffill()
+    current_idx = len(df) - 1
+    current_price = df["Close"].iloc[-1]
 
-if len(df) < 50:
-    st.warning("Zu wenig Daten")
-    st.stop()
+    # -----------------------
+    # 3. SCORE LEVELS
+    # -----------------------
+    def score_level(level):
+        age = current_idx - level["last_touch"]
+        recency = np.exp(-age / 50)  # 🔥 decay
+        strength = level["touches"]
+        return strength * recency
 
-last_time = df.index[-1]
-st.caption(f"Last update: {last_time}")
+    for l in sup_cluster:
+        l["score"] = score_level(l)
 
-supports,resistances = detect_levels(df)
-if len(supports) == 0:
-    supports = [df["Low"].min()]
+    for l in res_cluster:
+        l["score"] = score_level(l)
 
-if len(resistances) == 0:
-    resistances = [df["High"].max()]
-    
-supports = clean_levels(supports)
-resistances = clean_levels(resistances)
+    # -----------------------
+    # 4. BREAKOUT + FLIP
+    # -----------------------
+    flipped_supports = []
+    flipped_resistances = []
 
-current_price = df["Close"].iloc[-1]
+    for r in res_cluster:
+        if current_price > r["price"]:
+            flipped_supports.append(r)
 
-supports = sorted(supports, key=lambda x: abs(x - current_price))[:5]
-resistances = sorted(resistances, key=lambda x: abs(x - current_price))[:5]
+    for s in sup_cluster:
+        if current_price < s["price"]:
+            flipped_resistances.append(s)
+
+    # -----------------------
+    # 5. MERGE
+    # -----------------------
+    final_supports = sup_cluster + flipped_supports
+    final_resistances = res_cluster + flipped_resistances
+
+    # -----------------------
+    # 6. SORT BY STRENGTH + DISTANCE
+    # -----------------------
+    def sort_levels(levels, direction="support"):
+        return sorted(
+            levels,
+            key=lambda x: (
+                -x["score"], 
+                abs(x["price"] - current_price)
+            )
+        )
+
+    final_supports = sort_levels(final_supports)[:5]
+    final_resistances = sort_levels(final_resistances)[:5]
+
+    return final_supports, final_resistances
+
+sup_levels, res_levels = detect_levels_pro(df)
+
+supports = [l["price"] for l in sup_levels]
+resistances = [l["price"] for l in res_levels]
+
 
 # -----------------------
 # SUBPLOTS (FIXED UI)
