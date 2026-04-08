@@ -1168,27 +1168,50 @@ def calculate_sl_tp(df, i, rr_target=2):
     atr = df["ATR"].iloc[i]
     vwap = df["VWAP_RTH"].iloc[i]
 
+    if np.isnan(price) or np.isnan(atr) or np.isnan(vwap):
+        return np.nan, np.nan
+
+    # Sicherheitslimits
+    min_risk = atr * 0.5
+    max_risk = atr * 3   # verhindert riesige TP
+
     if df["LongSignal"].iloc[i]:
         swing_low = df["Low"].iloc[max(0, i-10):i].min()
         if np.isnan(swing_low):
-            swing_low = price - atr  # fallback
+            swing_low = price - atr
+
         sl_vwap = vwap - atr * 0.5
         sl = min(swing_low, sl_vwap)
-        tp = price + max(price - sl, atr*0.5) * rr_target  # TP immer positiv
+
+        # FIX: SL darf nicht über Preis liegen
+        if sl >= price:
+            sl = price - min_risk
+
+        risk = price - sl
+        risk = max(min_risk, min(risk, max_risk))
+
+        tp = price + risk * rr_target
         return sl, tp
 
     elif df["ShortSignal"].iloc[i]:
         swing_high = df["High"].iloc[max(0, i-10):i].max()
         if np.isnan(swing_high):
             swing_high = price + atr
+
         sl_vwap = vwap + atr * 0.5
-        sl = max(swing_high, sl_vwap)  # SL über dem Einstieg
-        risk = sl - price               # Risiko
-        tp = price - max(risk, atr*0.5) * rr_target  # TP unter dem Einstieg
+        sl = max(swing_high, sl_vwap)
+
+        # FIX: SL darf nicht unter Preis liegen
+        if sl <= price:
+            sl = price + min_risk
+
+        risk = sl - price
+        risk = max(min_risk, min(risk, max_risk))
+
+        tp = price - risk * rr_target
         return sl, tp
 
-    else:
-        return np.nan, np.nan
+    return np.nan, np.nan
 
 ATR_MULT_SL = 1.5
 ATR_MULT_TP = 2.5
@@ -1224,7 +1247,80 @@ for i in range(1, len(df)):
         prev_sl = df["SL"].iloc[i-1]
         new_sl = price + atr * 1.2
         df.at[df.index[i], "SL"] = min(prev_sl, new_sl)
-        
+ 
+df["ORB_High"] = df["High"].rolling(12).max()   # erste Stunde (bei 5m = 12 Kerzen)
+df["ORB_Low"] = df["Low"].rolling(12).min()
+     
+def get_entry_signal(df, i, bias):
+    price = df["Close"].iloc[i]
+    vwap = df["VWAP_RTH"].iloc[i]
+
+    long_score = df["LongScore"].iloc[i]
+    short_score = df["ShortScore"].iloc[i]
+    delta = long_score - short_score
+
+    volume = df["Volume"].iloc[i]
+    avg_volume = df["Volume"].rolling(20).mean().iloc[i]
+
+    # ORB Levels (musst du vorher berechnet haben)
+    orb_high = df["ORB_High"].iloc[i]
+    orb_low = df["ORB_Low"].iloc[i]
+
+    # SL / TP holen
+    sl = df["SL"].iloc[i]
+    tp = df["TP"].iloc[i]
+
+    if np.isnan(sl) or np.isnan(tp):
+        return None
+
+    rr = abs((tp - price) / (price - sl)) if price != sl else 0
+
+    # -----------------------
+    # 🚀 LONG SETUP
+    # -----------------------
+    if (
+    
+        bias == "LONG" and
+        long_score >= MIN_SCORE and
+        delta >= DELTA_THRESHOLD and
+        price > vwap and
+        price > orb_high and
+        volume > avg_volume * VOLUME_FACTOR and
+        rr >= MIN_RR
+    ):
+        return {
+            "type": "LONG",
+            "price": price,
+            "sl": sl,
+            "tp": tp,
+            "rr": rr,
+            "delta": delta
+        }
+
+    # -----------------------
+    # 🔻 SHORT SETUP
+    # -----------------------
+    if (
+        bias == "SHORT" and
+        short_score >= MIN_SCORE and
+        delta <= -DELTA_THRESHOLD and
+        price < vwap and
+        price < orb_low and
+        volume > avg_volume * VOLUME_FACTOR and
+        rr >= MIN_RR
+    ):
+        return {
+            "type": "SHORT",
+            "price": price,
+            "sl": sl,
+            "tp": tp,
+            "rr": rr,
+            "delta": delta
+        }
+
+    return None   
+
+signal = get_entry_signal(df, len(df)-1, signal_type)
 # -----------------------
 # PRICE METRICS
 # -----------------------
@@ -1897,8 +1993,17 @@ st.plotly_chart(fig, use_container_width=True,
 
 last_long = df["LongSignal"].iloc[-1]
 last_short = df["ShortSignal"].iloc[-1]
-long_score = df["LongScore"].iloc[-1]
-short_score = df["ShortScore"].iloc[-1]
+
+MIN_SCORE = 5
+DELTA_THRESHOLD = 2
+MIN_RR = 1.5
+VOLUME_FACTOR = 1.2
+
+last_idx = len(df) - 1
+
+long_score = df["LongScore"].iloc[last_idx]
+short_score = df["ShortScore"].iloc[last_idx]
+delta = long_score - short_score
 
 confidence = max(long_score, short_score)
 
@@ -1921,17 +2026,54 @@ col22.metric(
     delta=f"{short_score - long_score:.2f}"
 )
 
-if last_long:
-    st.success(f"🚀 SMART LONG | Score: {long_score:.2f}")
+signal_idx = None
+signal_type = None
 
-elif last_short:
-    st.error(f"🔻 SMART SHORT | Score: {short_score:.2f}")
+for i in range(len(df)-1, -1, -1):
+    long_score = df["LongScore"].iloc[i]
+    short_score = df["ShortScore"].iloc[i]
+    delta = long_score - short_score
 
+    if long_score >= MIN_SCORE and delta >= DELTA_THRESHOLD:
+        signal_idx = i
+        signal_type = "LONG"
+        break
+
+    elif short_score >= MIN_SCORE and delta <= -DELTA_THRESHOLD:
+        signal_idx = i
+        signal_type = "SHORT"
+        break
+
+if signal_idx is not None:
+    long_score = df["LongScore"].iloc[signal_idx]
+    short_score = df["ShortScore"].iloc[signal_idx]
+    delta = long_score - short_score
+
+    if signal_type == "LONG":
+        st.success(f"🚀 SMART LONG | Score: {long_score:.2f} | Δ {delta:.2f}")
+    else:
+        st.error(f"🔻 SMART SHORT | Score: {short_score:.2f} | Δ {delta:.2f}")
 else:
-    st.info(
-        f"No Setup → Long: {long_score:.2f} | Short: {short_score:.2f}"
-    )
-    
+    st.info("⚖️ NO CLEAR SIGNAL")
+
+if signal:
+    if signal["type"] == "LONG":
+        st.success(
+            f"🚀 A+ LONG\n"
+            f"Entry: {signal['price']:.2f}\n"
+            f"SL: {signal['sl']:.2f} | TP: {signal['tp']:.2f}\n"
+            f"RR: {signal['rr']:.2f} | Δ: {signal['delta']:.2f}"
+        )
+    else:
+        st.error(
+            f"🔻 A+ SHORT\n"
+            f"Entry: {signal['price']:.2f}\n"
+            f"SL: {signal['sl']:.2f} | TP: {signal['tp']:.2f}\n"
+            f"RR: {signal['rr']:.2f} | Δ: {signal['delta']:.2f}"
+        )
+else:
+    st.info("⚖️ NO A+ SETUP")
+        
 # -----------------------
 # TELEGRAM ALERTS
 # -----------------------
