@@ -2033,6 +2033,15 @@ long_score = df["LongScore"].iloc[last_idx]
 short_score = df["ShortScore"].iloc[last_idx]
 delta = long_score - short_score
 
+# Signaltyp bestimmen
+signal_type = None
+if long_score >= MIN_SCORE and delta >= DELTA_THRESHOLD:
+    signal_type = "LONG"
+elif short_score >= MIN_SCORE and delta <= -DELTA_THRESHOLD:
+    signal_type = "SHORT"
+else:
+    signal_type = "NEUTRAL"
+
 confidence = max(long_score, short_score)
 
 col20, col21, col22 = st.columns(3)
@@ -2072,15 +2081,10 @@ for i in range(len(df)-1, -1, -1):
         signal_type = "SHORT"
         break
 
-if signal_idx is not None:
-    long_score = df["LongScore"].iloc[signal_idx]
-    short_score = df["ShortScore"].iloc[signal_idx]
-    delta = long_score - short_score
-
-    if signal_type == "LONG":
-        st.success(f"🚀 SMART LONG | Score: {long_score:.2f} | Δ {delta:.2f}")
-    else:
-        st.error(f"🔻 SMART SHORT | Score: {short_score:.2f} | Δ {delta:.2f}")
+if signal_type == "LONG":
+    st.success(f"🚀 SMART LONG | Score: {long_score:.2f} | Δ {delta:.2f}")
+elif signal_type == "SHORT":
+    st.error(f"🔻 SMART SHORT | Score: {short_score:.2f} | Δ {delta:.2f}")
 else:
     st.info("⚖️ NO CLEAR SIGNAL")
 
