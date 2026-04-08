@@ -1318,8 +1318,14 @@ def get_entry_signal(df, i, bias):
             "delta": delta
         }
 
-    return None   
+    return None 
+  
+if long_score > short_score and delta >= DELTA_THRESHOLD:
+    signal_type = "LONG"
 
+elif short_score > long_score and delta <= -DELTA_THRESHOLD:
+    signal_type = "SHORT"
+    
 signal = get_entry_signal(df, len(df)-1, signal_type)
 # -----------------------
 # PRICE METRICS
