@@ -1320,20 +1320,34 @@ def get_entry_signal(df, i, bias):
 
     return None 
   
-i = len(df) - 1
-long_score = df["LongScore"].iloc[i]
-short_score = df["ShortScore"].iloc[i]
-delta = long_score - short_score
+# -----------------------
+# Berechne LongScore, ShortScore und Delta
+# -----------------------
+df["LongScore"] = df.get("LongScore", 0.0)
+df["ShortScore"] = df.get("ShortScore", 0.0)
 
-if long_score > short_score and delta >= DELTA_THRESHOLD:
+# Berechne Delta
+df["Delta"] = df["LongScore"] - df["ShortScore"]
+
+# SMART Signal Ausgabe für die letzte Kerze
+i = len(df) - 1
+ls = df["LongScore"].iloc[i]
+ss = df["ShortScore"].iloc[i]
+delta = df["Delta"].iloc[i]
+
+# Bestimme Signaltyp
+if ls > ss and delta >= DELTA_THRESHOLD:
     signal_type = "LONG"
-elif short_score > long_score and delta <= -DELTA_THRESHOLD:
+elif ss > ls and delta <= -DELTA_THRESHOLD:
     signal_type = "SHORT"
 else:
     signal_type = "NEUTRAL"
+
+# Ausgabe
+print(f"SMART {signal_type} | Score: {ls:.2f} | Δ {delta:.2f}")
     
 signal = get_entry_signal(df, i, signal_type)
-print(signal)
+
 
 # -----------------------
 # PRICE METRICS
