@@ -1671,10 +1671,12 @@ for r in resistances:
 # -----------------------
 # SL / TP LINES
 # -----------------------
-last_sl = df["SL"].iloc[-1]
-last_tp = df["TP"].iloc[-1]
 
-if not np.isnan(last_sl):
+# Letzten gültigen SL/TP finden
+last_sl = df["SL"].dropna().iloc[-1] if df["SL"].notna().any() else None
+last_tp = df["TP"].dropna().iloc[-1] if df["TP"].notna().any() else None
+
+if last_sl is not None:
     fig.add_hline(
         y=last_sl,
         line_dash="dot",
@@ -1684,7 +1686,7 @@ if not np.isnan(last_sl):
         annotation_position="bottom right"
     )
 
-if not np.isnan(last_tp):
+if last_tp is not None:
     fig.add_hline(
         y=last_tp,
         line_dash="dot",
@@ -1693,7 +1695,6 @@ if not np.isnan(last_tp):
         annotation_text=f"TP {last_tp:.2f}",
         annotation_position="top right"
     )
-
 # -----------------------
 # VOLUME
 # -----------------------
