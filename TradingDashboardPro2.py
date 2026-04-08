@@ -1169,24 +1169,25 @@ def calculate_sl_tp(df, i, rr_target=2):
     vwap = df["VWAP_RTH"].iloc[i]
 
     if df["LongSignal"].iloc[i]:
-        swing_low = df["Low"].iloc[max(0, i-10):i].min()  # letzte Struktur
-        sl_vwap = vwap - atr * 0.5                        # VWAP-Puffer
+        swing_low = df["Low"].iloc[max(0, i-10):i].min()
+        if np.isnan(swing_low):
+            swing_low = price - atr  # fallback
+        sl_vwap = vwap - atr * 0.5
         sl = min(swing_low, sl_vwap)
-        tp = price + (price - sl) * rr_target
+        tp = price + max(price - sl, atr*0.5) * rr_target  # TP immer positiv
         return sl, tp
 
     elif df["ShortSignal"].iloc[i]:
         swing_high = df["High"].iloc[max(0, i-10):i].max()
+        if np.isnan(swing_high):
+            swing_high = price + atr
         sl_vwap = vwap + atr * 0.5
         sl = max(swing_high, sl_vwap)
-        tp = price - (sl - price) * rr_target
+        tp = price - max(sl - price, atr*0.5) * rr_target
         return sl, tp
 
     else:
-        return None, None 
-
-df["SL"] = np.nan
-df["TP"] = np.nan
+        return np.nan, np.nan
 
 ATR_MULT_SL = 1.5
 ATR_MULT_TP = 2.5
