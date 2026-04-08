@@ -1248,7 +1248,7 @@ if not rth_df.empty:
     last_rth_price = rth_df["Close"].iloc[-1]
 #else:
     # fallback, z.B. letzte verfügbare Kerze
-    #last_rth_price = df["Close"].iloc[-1]
+    last_rth_price = df["Close"].iloc[-1]
     
 def last_valid(series):
     try:
