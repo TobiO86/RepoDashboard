@@ -2044,6 +2044,28 @@ else:
 
 confidence = max(long_score, short_score)
 
+signal_idx = None
+signal_type = None
+
+for i in range(len(df)-1, -1, -1):
+    long_score = df["LongScore"].iloc[i]
+    short_score = df["ShortScore"].iloc[i]
+    delta = long_score - short_score
+
+    if long_score >= MIN_SCORE and delta >= DELTA_THRESHOLD:
+        signal_idx = i
+        signal_type = "LONG"
+        break
+    elif short_score >= MIN_SCORE and delta <= -DELTA_THRESHOLD:
+        signal_idx = i
+        signal_type = "SHORT"
+        break
+    
+# Falls kein Signal gefunden, fallback auf letzte Kerze
+if signal_idx is None:
+    signal_idx = len(df)-1
+    signal_type = "NEUTRAL"    
+    
 col20, col21, col22 = st.columns(3)
 
 col20.metric(
@@ -2061,25 +2083,7 @@ col22.metric(
     "Short Score",
     f"{short_score:.2f}",
     delta=f"{short_score - long_score:.2f}"
-)
-
-signal_idx = None
-signal_type = None
-
-for i in range(len(df)-1, -1, -1):
-    long_score = df["LongScore"].iloc[i]
-    short_score = df["ShortScore"].iloc[i]
-    delta = long_score - short_score
-
-    if long_score >= MIN_SCORE and delta >= DELTA_THRESHOLD:
-        signal_idx = i
-        signal_type = "LONG"
-        break
-
-    elif short_score >= MIN_SCORE and delta <= -DELTA_THRESHOLD:
-        signal_idx = i
-        signal_type = "SHORT"
-        break
+)    
 
 if signal_type == "LONG":
     st.success(f"🚀 SMART LONG | Score: {long_score:.2f} | Δ {delta:.2f}")
