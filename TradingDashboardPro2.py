@@ -1320,13 +1320,21 @@ def get_entry_signal(df, i, bias):
 
     return None 
   
+i = len(df) - 1
+long_score = df["LongScore"].iloc[i]
+short_score = df["ShortScore"].iloc[i]
+delta = long_score - short_score
+
 if long_score > short_score and delta >= DELTA_THRESHOLD:
     signal_type = "LONG"
-
 elif short_score > long_score and delta <= -DELTA_THRESHOLD:
     signal_type = "SHORT"
+else:
+    signal_type = "NEUTRAL"
     
-signal = get_entry_signal(df, len(df)-1, signal_type)
+signal = get_entry_signal(df, i, signal_type)
+print(signal)
+
 # -----------------------
 # PRICE METRICS
 # -----------------------
