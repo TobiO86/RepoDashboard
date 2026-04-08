@@ -1246,7 +1246,7 @@ if df_fast.empty or len(df_fast) < 2:
 rth_df = df[df["Session"] == "RTH"]
 if not rth_df.empty:
     last_rth_price = rth_df["Close"].iloc[-1]
-#else:
+else:
     # fallback, z.B. letzte verfügbare Kerze
     last_rth_price = df["Close"].iloc[-1]
     
