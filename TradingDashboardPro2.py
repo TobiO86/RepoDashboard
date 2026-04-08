@@ -1242,8 +1242,26 @@ if df_fast.empty or len(df_fast) < 2:
     st.warning("Keine Live-Daten verfügbar")
     st.stop()
 
+# 1️⃣ Letzter RTH Close (Last Price)
+rth_df = df[df["Session"] == "RTH"]
+if not rth_df.empty:
+    last_rth_price = rth_df["Close"].iloc[-1]
+#else:
+    # fallback, z.B. letzte verfügbare Kerze
+    #last_rth_price = df["Close"].iloc[-1]
+    
+def last_valid(series):
+    try:
+        return float(series.dropna().iloc[-1])
+    except:
+        return 0.0
 
-last_rth_price = df["RTH_Close"].dropna().iloc[-1] if not df["RTH_Close"].dropna().empty else None
+# Absicherung
+if df_fast.empty or "Close" not in df_fast.columns:
+    current_price = 0.0
+else:
+    current_price = last_valid(df_fast["Close"])
+
 
 if last_rth_price is not None and current_price is not None:
     delta_price = last_rth_price - current_price
