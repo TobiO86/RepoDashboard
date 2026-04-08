@@ -1182,8 +1182,9 @@ def calculate_sl_tp(df, i, rr_target=2):
         if np.isnan(swing_high):
             swing_high = price + atr
         sl_vwap = vwap + atr * 0.5
-        sl = max(swing_high, sl_vwap)
-        tp = price - max(sl - price, atr*0.5) * rr_target
+        sl = max(swing_high, sl_vwap)  # SL über dem Einstieg
+        risk = sl - price               # Risiko
+        tp = price - max(risk, atr*0.5) * rr_target  # TP unter dem Einstieg
         return sl, tp
 
     else:
