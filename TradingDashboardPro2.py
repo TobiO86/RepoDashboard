@@ -1227,27 +1227,33 @@ for i in range(1, len(df)):
     new_long = df["LongSignal"].iloc[i] and not df["LongSignal"].iloc[i-1]
     new_short = df["ShortSignal"].iloc[i] and not df["ShortSignal"].iloc[i-1]
 
-    # 1) Neue Signale → NUR HIER initial SL/TP setzen
-    if new_long:
+for i in range(1, len(df)):
+
+    price = df["Close"].iloc[i]
+    atr = df["ATR"].iloc[i]
+
+    new_long = df["LongSignal"].iloc[i] and not df["LongSignal"].iloc[i-1]
+    new_short = df["ShortSignal"].iloc[i] and not df["ShortSignal"].iloc[i-1]
+
+    # --- DEFAULT: vorherige Werte übernehmen ---
+    df.at[df.index[i], "SL"] = df["SL"].iloc[i-1]
+    df.at[df.index[i], "TP"] = df["TP"].iloc[i-1]
+
+    # --- Neue Signale ---
+    if new_long or new_short:
         sl, tp = calculate_sl_tp(df, i)
-        if sl is not None:
+        if not np.isnan(sl):
             df.at[df.index[i], "SL"] = sl
             df.at[df.index[i], "TP"] = tp
 
-    elif new_short:
-        sl, tp = calculate_sl_tp(df, i)
-        if sl is not None:
-            df.at[df.index[i], "SL"] = sl
-            df.at[df.index[i], "TP"] = tp
-
-    # 2) Trailing SL
-    if df["LongSignal"].iloc[i-1]:
-        prev_sl = df["SL"].iloc[i-1]
+    # --- Trailing ---
+    if df["LongSignal"].iloc[i-1] and not np.isnan(df["SL"].iloc[i]):
+        prev_sl = df["SL"].iloc[i]
         new_sl = price - atr * 1.2
         df.at[df.index[i], "SL"] = max(prev_sl, new_sl)
 
-    if df["ShortSignal"].iloc[i-1]:
-        prev_sl = df["SL"].iloc[i-1]
+    if df["ShortSignal"].iloc[i-1] and not np.isnan(df["SL"].iloc[i]):
+        prev_sl = df["SL"].iloc[i]
         new_sl = price + atr * 1.2
         df.at[df.index[i], "SL"] = min(prev_sl, new_sl)
  
