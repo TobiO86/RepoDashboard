@@ -1122,6 +1122,9 @@ for i in range(start, len(df)):
 
 df["ScoreDelta"] = df["LongScore"] - df["ShortScore"]
 
+df["SL"] = np.nan
+df["TP"] = np.nan
+
 df["LongSignal"] = False
 df["ShortSignal"] = False
 
