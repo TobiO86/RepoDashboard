@@ -2170,4 +2170,7 @@ if signal_key and signal_key not in st.session_state.sent_signals:
 
     send_telegram(message)
 
+if st.button("🧪 Test LONG Signal"):
+    send_telegram("🚀 TEST LONG SIGNAL funktioniert!")
+    
     st.session_state.sent_signals.add(signal_key)
