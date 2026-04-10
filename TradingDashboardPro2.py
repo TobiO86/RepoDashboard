@@ -2143,10 +2143,10 @@ if "sent_signals" not in st.session_state:
 signal_key = None
 
 if df["LongSignal"].iloc[-1]:
-    signal_key = f"{symbol}:LONG:{current_price:.2f}"
+    signal_key = f"{symbol}:LONG"
 
 elif df["ShortSignal"].iloc[-1]:
-    signal_key = f"{symbol}:SHORT:{current_price:.2f}"
+    signal_key = f"{symbol}:SHORT"
 
 if signal_key and signal_key not in st.session_state.sent_signals:
     
@@ -2169,7 +2169,7 @@ if signal_key and signal_key not in st.session_state.sent_signals:
     )
 
     send_telegram(message)
-    
+
     st.session_state.sent_signals.add(signal_key)
     
 if st.button("🧪 Test LONG Signal"):
