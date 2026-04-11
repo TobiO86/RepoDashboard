@@ -385,7 +385,7 @@ if "interval_select" not in st.session_state:
     st.session_state.interval_select = "5m"
 
 if "period_select" not in st.session_state:
-    st.session_state.period_select = valid_map["5m"][0]
+    st.session_state.period_select = valid_map["5m"][1]
 
 # --- INTERVAL ---
 interval = st.sidebar.selectbox(
@@ -484,7 +484,7 @@ def load_global_prices(symbol):
         if not sym:
             return np.nan
         try:
-            df = yf.download(sym, period="5d", interval="5m", progress=False)
+            df = yf.download(sym, period="1d", interval="5m", progress=False)
             if df.empty:
                 return np.nan
             return float(df["Close"].iloc[-1])
