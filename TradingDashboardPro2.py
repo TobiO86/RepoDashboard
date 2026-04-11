@@ -1249,8 +1249,22 @@ for i in range(1, len(df)):
         new_sl = price + atr * 1.2
         df.at[df.index[i], "SL"] = min(prev_sl, new_sl)
  
-df["ORB_High"] = df["High"].rolling(12).max()   # erste Stunde (bei 5m = 12 Kerzen)
-df["ORB_Low"] = df["Low"].rolling(12).min()
+df["Date"] = df.index.date
+
+orb_highs = []
+orb_lows = []
+
+for date, group in df.groupby("Date"):
+    orb = group.between_time("09:30", "09:45")
+
+    high = orb["High"].max()
+    low = orb["Low"].min()
+
+    orb_highs.extend([high] * len(group))
+    orb_lows.extend([low] * len(group))
+
+df["ORB_High"] = orb_highs
+df["ORB_Low"] = orb_lows
   
 def get_smart_signal(df, i):
     long_score = df["LongScore"].iloc[i]
