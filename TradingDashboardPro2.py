@@ -2140,32 +2140,17 @@ def send_telegram(msg):
 if "sent_signals" not in st.session_state:
     st.session_state.sent_signals = set()
 
-#signal_key = None
-
-#if df["LongSignal"].iloc[-1]:
-#    signal_type = f"{symbol}:LONG"
-
-#elif df["ShortSignal"].iloc[-1]:
-#    signal_key = f"{symbol}:SHORT"
-
 if signal_type and signal_type not in st.session_state.sent_signals:
     
-    sl = df["SL"].iloc[-1]
-    tp = df["TP"].iloc[-1]
-
-    sl_text = f"{sl:.2f}" if not np.isnan(sl) else "-"
-    tp_text = f"{tp:.2f}" if not np.isnan(tp) else "-"
-
-    score = df["LongScore"].iloc[-1] if df["LongSignal"].iloc[-1] else df["ShortScore"].iloc[-1]
-
+ 
     message = (
         f"{symbol} SIGNAL\n\n"
         f"{signal_type}\n"
-        f"Score: {long_score:.2f} / {short_score:.2f}"
+        f"LongScore: {long_score:.2f} / ShortScore: {short_score:.2f}\n"
         f"VWAP: {df['VWAP_RTH'].iloc[-1]:.2f}\n"
         f"RSI: {df['RSI'].iloc[-1]:.2f}\n\n"
-        f"SL: {sl_text}\n"
-        f"TP: {tp_text}"
+        f"SL: {signal['sl']:.2f}\n"
+        f"TP: {signal['tp']:.2f}"
     )
 
     send_telegram(message)
