@@ -2140,15 +2140,15 @@ def send_telegram(msg):
 if "sent_signals" not in st.session_state:
     st.session_state.sent_signals = set()
 
-signal_key = None
+#signal_key = None
 
-if df["LongSignal"].iloc[-1]:
-    signal_key = f"{symbol}:LONG"
+#if df["LongSignal"].iloc[-1]:
+#    signal_type = f"{symbol}:LONG"
 
-elif df["ShortSignal"].iloc[-1]:
-    signal_key = f"{symbol}:SHORT"
+#elif df["ShortSignal"].iloc[-1]:
+#    signal_key = f"{symbol}:SHORT"
 
-if signal_key and signal_key not in st.session_state.sent_signals:
+if signal_type and signal_type not in st.session_state.sent_signals:
     
     sl = df["SL"].iloc[-1]
     tp = df["TP"].iloc[-1]
@@ -2160,8 +2160,8 @@ if signal_key and signal_key not in st.session_state.sent_signals:
 
     message = (
         f"{symbol} SIGNAL\n\n"
-        f"{signal_key}\n"
-        f"Score: {score}/8\n\n"
+        f"{signal_type}\n"
+        f"Score: {long_score:.2f} / {short_score:.2f}"
         f"VWAP: {df['VWAP_RTH'].iloc[-1]:.2f}\n"
         f"RSI: {df['RSI'].iloc[-1]:.2f}\n\n"
         f"SL: {sl_text}\n"
@@ -2170,7 +2170,7 @@ if signal_key and signal_key not in st.session_state.sent_signals:
 
     send_telegram(message)
 
-    st.session_state.sent_signals.add(signal_key)
+    st.session_state.sent_signals.add(signal_type)
     
 if st.button("🧪 Test LONG Signal"):
     send_telegram("🚀 TEST LONG SIGNAL funktioniert!")
