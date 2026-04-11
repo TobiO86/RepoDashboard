@@ -1339,7 +1339,7 @@ def calculate_sl_tp(df, i, rr_target=2):
                 risk = price - sl 
                 risk = max(min_risk, min(risk, max_risk)) 
                 tp = price + risk * rr_target 
-        return sl, tp 
+            return sl, tp 
 
     elif df["ShortSignal"].iloc[i]: 
         swing_high = df["High"].iloc[max(0, i-10):i].max()
@@ -1353,7 +1353,7 @@ def calculate_sl_tp(df, i, rr_target=2):
                 risk = sl - price 
                 risk = max(min_risk, min(risk, max_risk)) 
                 tp = price - risk * rr_target 
-        return sl, tp 
+            return sl, tp 
     return np.nan, np.nan
 
 
