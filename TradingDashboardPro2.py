@@ -416,7 +416,7 @@ st.sidebar.caption(f"Aktive Kombi: {interval} / {period}")
 @st.cache_data(ttl=5)
 def load_fast_price(symbol):
     try:
-        df = yf.download(symbol, period="1d", interval="1m", progress=False, threads=False)
+        df = yf.download(symbol, period="5d", interval="5m", progress=False, threads=False)
     except:
         return pd.DataFrame()
 
@@ -463,6 +463,8 @@ def load_global_prices(symbol):
         "SQ": "SQ.DE",
         "PYPL":"PYPL.DE",
         "RHM" :"RHM.DE",
+        "BASF" :"BAS.DE",
+        "ENR" :"ENR.DE",
 
         # -----------------------
         # AI / MOMENTUM / HALBLEITER
