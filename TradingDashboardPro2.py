@@ -1334,10 +1334,11 @@ def calculate_sl_tp(df, i, rr_target=2):
             sl_vwap = vwap - atr * 0.5 
             sl = min(swing_low, sl_vwap) 
             # FIX: SL darf nicht über Preis liegen 
-            if sl >= price: sl = price - min_risk 
-            risk = price - sl 
-            risk = max(min_risk, min(risk, max_risk)) 
-            tp = price + risk * rr_target 
+            if sl >= price: 
+                sl = price - min_risk 
+                risk = price - sl 
+                risk = max(min_risk, min(risk, max_risk)) 
+                tp = price + risk * rr_target 
         return sl, tp 
 
     elif df["ShortSignal"].iloc[i]: 
@@ -1347,10 +1348,11 @@ def calculate_sl_tp(df, i, rr_target=2):
             sl_vwap = vwap + atr * 0.5 
             sl = max(swing_high, sl_vwap) 
             # FIX: SL darf nicht unter Preis liegen 
-            if sl <= price: sl = price + min_risk 
-            risk = sl - price 
-            risk = max(min_risk, min(risk, max_risk)) 
-            tp = price - risk * rr_target 
+            if sl <= price: 
+                sl = price + min_risk 
+                risk = sl - price 
+                risk = max(min_risk, min(risk, max_risk)) 
+                tp = price - risk * rr_target 
         return sl, tp 
     return np.nan, np.nan
 
