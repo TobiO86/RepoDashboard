@@ -225,6 +225,29 @@ def calculate_sl_tp(df, i, setup, rr_target=2):
 
     return np.nan, np.nan
 
+            # -----------------------
+            # TELEGRAM ALERTS
+            # -----------------------
+
+def send_telegram(msg):
+
+    TOKEN = st.secrets["TELEGRAM_TOKEN"]
+    CHAT_ID = st.secrets["TELEGRAM_CHAT_ID"]
+    
+    url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
+    
+    try:
+        response = requests.post(
+            url,
+            data={"chat_id": CHAT_ID, "text": msg},
+            timeout=5
+        )
+        if response.status_code != 200:
+            st.warning(f"Telegram failed: {response.text}")
+    except Exception as e:
+        st.warning(f"Telegram Error: {e}")
+
+
 @st.cache_data(ttl=180)
 def scan_market(limit=100):
     symbols = filter_symbols_by_session(get_sp500_symbols(), SESSION)[:limit]
@@ -234,7 +257,7 @@ def scan_market(limit=100):
     chunks = np.array_split(symbols, 3)
 
     # --- Download ---
-    download_data(symbols)
+    data_all = download_data(symbols)
 
 
     # --- Scan ---
@@ -410,9 +433,6 @@ def scan_market(limit=100):
             delta_score = long_score - short_score
             score = total_score
 
-            i = len(df) - 1
-            sl, tp = calculate_sl_tp(df, i, setup, rr_target=2)
-
             if setup:
                 results.append({
                     "symbol": s,
@@ -423,6 +443,62 @@ def scan_market(limit=100):
                     "sl": sl,
                     "tp": tp,
                 })
+            
+            i = len(df) - 1
+            sl, tp = calculate_sl_tp(df, i, setup, rr_target=2)
+
+            if np.isnan(sl) or np.isnan(tp):
+                continue
+
+            risk = abs(price - sl)
+            reward = abs(tp - price)
+
+            if risk == 0:
+                continue
+
+            rr = reward / risk
+
+            # 🔹 QUALITY FILTER
+            if rr < 1.5:
+                continue
+
+            if score < 4:
+                continue
+
+            signal = {
+                "symbol": s,
+                "type": setup,
+                "price": price,
+                "sl": sl,
+                "tp": tp,
+                "rr": rr,
+                "score": score,
+                "delta": delta_score
+}
+            
+            # -----------------------
+            # ANTI-SPAM LOGIK
+            # -----------------------
+
+            if "sent_signals" not in st.session_state:
+                st.session_state.sent_signals = set()
+
+            signal_id = f"{signal['symbol']}_{signal['type']}_{round(signal['price'],1)}"
+
+            if signal_id not in st.session_state.sent_signals:
+
+                message = (
+                    f"🚨 {signal['symbol']} {signal['type']}\n\n"
+                    f"Entry: {signal['price']:.2f}\n"
+                    f"SL: {signal['sl']:.2f}\n"
+                    f"TP: {signal['tp']:.2f}\n"
+                    f"RR: {signal['rr']:.2f}\n\n"
+                    f"Score: {signal['score']} | Δ {signal['delta']}"
+                )
+
+                send_telegram(message)
+
+                st.session_state.sent_signals.add(signal_id)
 
         except:
             continue
@@ -520,6 +596,8 @@ if symbol_input != st.session_state.symbol:
     
 symbol = st.session_state.symbol   
 
+if st.sidebar.button("🧪 Test LONG Signal"):
+    send_telegram("🚀 TEST LONG SIGNAL funktioniert!")
 # -----------------------
 # AUTO PERIOD / INTERVAL FIX
 # -----------------------
@@ -2285,58 +2363,3 @@ if signal:
 else:
     st.info("⚖️ NO A+ SETUP")
         
-# -----------------------
-# TELEGRAM ALERTS
-# -----------------------
-
-def send_telegram(msg):
-
-    TOKEN = st.secrets["TELEGRAM_TOKEN"]
-    CHAT_ID = st.secrets["TELEGRAM_CHAT_ID"]
-    
-    url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
-    
-    try:
-        response = requests.post(
-            url,
-            data={"chat_id": CHAT_ID, "text": msg},
-            timeout=5
-        )
-        if response.status_code != 200:
-            st.warning(f"Telegram failed: {response.text}")
-    except Exception as e:
-        st.warning(f"Telegram Error: {e}")
-
-# -----------------------
-# ANTI-SPAM LOGIK
-# -----------------------
-
-if "sent_signals" not in st.session_state:
-    st.session_state.sent_signals = set()
-
-# 👉 NUR A+ SIGNATUREN SENDEN
-if signal:
-    signal_id = f"{symbol}_{signal['type']}"
-
-    if signal_id not in st.session_state.sent_signals:
-
-        message = (
-            f"{symbol} A+ SIGNAL\n\n"
-            f"{signal['type']}\n"
-            f"Entry: {signal['price']:.2f}\n"
-            f"SL: {signal['sl']:.2f}\n"
-            f"TP: {signal['tp']:.2f}\n"
-            f"RR: {signal['rr']:.2f}\n\n"
-            f"Score: {long_score:.2f}/{short_score:.2f} | Δ {delta:.2f}"
-        )
-
-        send_telegram(message)
-
-        st.session_state.sent_signals.add(signal_id)
-
-    send_telegram(message)
-
-    st.session_state.sent_signals.add(signal_type)
-    
-if st.button("🧪 Test LONG Signal"):
-    send_telegram("🚀 TEST LONG SIGNAL funktioniert!")
