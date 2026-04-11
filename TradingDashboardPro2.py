@@ -141,6 +141,90 @@ def get_active_vwap(row):
         return row["VWAP_AH"]
     return row["Close"]
 
+def download_data(symbols):
+    data_all = {}
+
+    try:
+        d = yf.download(
+            tickers=" ".join(symbols),
+            period="5d",
+            interval="5m",
+            group_by="ticker",
+            threads=True,
+            progress=False
+        )
+    except:
+        return data_all
+
+    if isinstance(d.columns, pd.MultiIndex):
+        for ticker in symbols:
+            if ticker in d.columns.get_level_values(0):
+                df = d[ticker].copy()
+                df = df.dropna(subset=["Close"])
+                if not df.empty:
+                    data_all[ticker] = df
+    else:
+        # fallback (nur 1 ticker)
+        data_all[symbols[0]] = d.dropna()
+
+    return data_all
+
+def calculate_sl_tp(df, i, setup, rr_target=2):
+    price = df["Close"].iloc[i]
+    atr = df["ATR"].iloc[i]
+    vwap = df["VWAP_RTH"].iloc[i]
+
+    if np.isnan(price) or np.isnan(atr) or np.isnan(vwap):
+        return np.nan, np.nan
+
+    # Sicherheitslimits
+    min_risk = atr * 0.5
+    max_risk = atr * 3
+
+    # -----------------------
+    # LONG
+    # -----------------------
+    if setup == "LONG":
+        swing_low = df["Low"].iloc[max(0, i-10):i].min()
+
+        if np.isnan(swing_low):
+            swing_low = price - atr
+
+        sl_vwap = vwap - atr * 0.5
+        sl = min(swing_low, sl_vwap)
+
+        if sl >= price:
+            sl = price - min_risk
+
+        risk = price - sl
+        risk = max(min_risk, min(risk, max_risk))
+
+        tp = price + risk * rr_target
+        return round(sl, 2), round(tp, 2)
+
+    # -----------------------
+    # SHORT
+    # -----------------------
+    elif setup == "SHORT":
+        swing_high = df["High"].iloc[max(0, i-10):i].max()
+
+        if np.isnan(swing_high):
+            swing_high = price + atr
+
+        sl_vwap = vwap + atr * 0.5
+        sl = max(swing_high, sl_vwap)
+
+        if sl <= price:
+            sl = price + min_risk
+
+        risk = sl - price
+        risk = max(min_risk, min(risk, max_risk))
+
+        tp = price - risk * rr_target
+        return round(sl, 2), round(tp, 2)
+
+    return np.nan, np.nan
+
 @st.cache_data(ttl=180)
 def scan_market(limit=100):
     symbols = filter_symbols_by_session(get_sp500_symbols(), SESSION)[:limit]
@@ -150,18 +234,7 @@ def scan_market(limit=100):
     chunks = np.array_split(symbols, 3)
 
     # --- Download ---
-    for chunk in chunks:
-        try:
-            d = yf.download(tickers=" ".join(chunk.tolist()), period="2d", interval="5m", group_by="ticker", threads=True, progress=False)
-            if isinstance(d.columns, pd.MultiIndex):
-                for ticker in chunk:
-                    df = d.get(ticker)
-                    if df is not None and not df.empty:
-                        data_all[ticker] = df.dropna(subset=["Close"])
-            else:
-                data_all[chunk[0]] = d.dropna()
-        except:
-            continue
+    download_data(symbols)
 
 
     # --- Scan ---
@@ -188,8 +261,13 @@ def scan_market(limit=100):
             avg_vol = df["Vol_Avg_RTH"].iloc[-1]
             dollar_vol = price * avg_vol
 
-            if dollar_vol < 10_000_000:
-                continue
+            score = 0
+
+            # 🔹 Liquidity
+            if dollar_vol > 5_000_000:
+                score += 1
+            if dollar_vol > 20_000_000:
+                score += 1
 
             df["ATR"] = compute_atr(df)
             
@@ -198,8 +276,11 @@ def scan_market(limit=100):
             atr = df["ATR"].iloc[-1]
             atr_pct = atr / price
 
-            if atr_pct < 0.005:
-                continue
+            # 🔹 Volatility
+            if atr_pct > 0.003:
+                score += 1
+            if atr_pct > 0.01:
+                score += 1
 
             # -----------------------
             # DMI + ADX
@@ -228,8 +309,11 @@ def scan_market(limit=100):
             # --- Relative Volume ---
             rel_vol = df["Volume"].iloc[-1] / avg_vol
 
-            if rel_vol < 1.3:
-                continue
+            # 🔹 Volume
+            if rel_vol > 1.2:
+                score += 1
+            if rel_vol > 1.5:
+                score += 1
             
             curr = df.iloc[-1]
             vwap = get_active_vwap(curr)
@@ -249,18 +333,85 @@ def scan_market(limit=100):
             trend_bull = ema20.iloc[-1] > ema50.iloc[-1]
             trend_bear = ema20.iloc[-1] < ema50.iloc[-1]
 
-            long_score = sum([sweep_low, price>vwap, vol_spike, trend_bull, rsi>55])
-            short_score = sum([sweep_high, price<vwap, vol_spike, trend_bear, rsi<45])
-            delta_score = long_score - short_score
+            # -----------------------
+            # SMART SCORING SYSTEM
+            # -----------------------
+
+            long_score = 0
+            short_score = 0
+
+            # 🔹 VWAP Position
+            if price > vwap:
+                long_score += 1
+            else:
+                short_score += 1
+
+            # 🔹 Trend (EMA)
+            if ema20.iloc[-1] > ema50.iloc[-1]:
+                long_score += 1
+            else:
+                short_score += 1
+
+            # 🔹 RSI Momentum
+            if rsi > 55:
+                long_score += 1
+            elif rsi < 45:
+                short_score += 1
+
+            # 🔹 Volume Spike
+            if vol_spike:
+                long_score += 1
+                short_score += 1  # beide profitieren
+
+            # 🔹 Liquidity Sweeps
+            if sweep_low:
+                long_score += 1
+            if sweep_high:
+                short_score += 1
+
+            # -----------------------
+            # FINAL SCORE
+            # -----------------------
+
+            base_score = 0
+
+            # Liquidity
+            if dollar_vol > 5_000_000:
+                base_score += 1
+            if dollar_vol > 20_000_000:
+                base_score += 1
+
+            # Volatility
+            if atr_pct > 0.003:
+                base_score += 1
+            if atr_pct > 0.01:
+                base_score += 1
+
+            # Relative Volume
+            if rel_vol > 1.2:
+                base_score += 1
+            if rel_vol > 1.5:
+                base_score += 1
+
+            # Gesamtbewertung
+            total_score = max(long_score, short_score) + base_score
+
+            # -----------------------
+            # SETUP ENTSCHEIDUNG
+            # -----------------------
 
             setup = None
-            score = max(long_score, short_score)
 
-            # --- Lockerere Bedingungen ---
-            if long_score >= 2:
-                setup = "LONG"
-            elif short_score >= 2:
-                setup = "SHORT"
+            if total_score >= 4:
+                setup = "LONG" if long_score > short_score else "SHORT"
+            else:
+                continue
+
+            delta_score = long_score - short_score
+            score = total_score
+
+            i = len(df) - 1
+            sl, tp = calculate_sl_tp(df, i, setup, rr_target=2)
 
             if setup:
                 results.append({
@@ -269,7 +420,8 @@ def scan_market(limit=100):
                     "score": score,
                     "delta": delta_score,
                     "setup": setup,
-                    "volume": int(df["Volume"].iloc[-1])
+                    "sl": sl,
+                    "tp": tp,
                 })
 
         except:
@@ -1165,56 +1317,43 @@ for i in range(start, len(df)):
 # -----------------------
 # SL / TP (SMART VERSION)
 # -----------------------
-
 def calculate_sl_tp(df, i, rr_target=2):
-    price = df["Close"].iloc[i]
-    atr = df["ATR"].iloc[i]
-    vwap = df["VWAP_RTH"].iloc[i]
-
+    price = df["Close"].iloc[i] 
+    atr = df["ATR"].iloc[i] 
+    vwap = df["VWAP_RTH"].iloc[i] 
     if np.isnan(price) or np.isnan(atr) or np.isnan(vwap):
-        return np.nan, np.nan
-
+        return np.nan, np.nan 
     # Sicherheitslimits
-    min_risk = atr * 0.5
-    max_risk = atr * 3   # verhindert riesige TP
-
+    min_risk = atr * 0.5 
+    max_risk = atr * 3 
+    # verhindert riesige TP 
     if df["LongSignal"].iloc[i]:
-        swing_low = df["Low"].iloc[max(0, i-10):i].min()
-        if np.isnan(swing_low):
-            swing_low = price - atr
+        swing_low = df["Low"].iloc[max(0, i-10):i].min() 
+        if np.isnan(swing_low): 
+            swing_low = price - atr 
+            sl_vwap = vwap - atr * 0.5 
+            sl = min(swing_low, sl_vwap) 
+            # FIX: SL darf nicht über Preis liegen 
+            if sl >= price: sl = price - min_risk 
+            risk = price - sl 
+            risk = max(min_risk, min(risk, max_risk)) 
+            tp = price + risk * rr_target 
+        return sl, tp 
 
-        sl_vwap = vwap - atr * 0.5
-        sl = min(swing_low, sl_vwap)
-
-        # FIX: SL darf nicht über Preis liegen
-        if sl >= price:
-            sl = price - min_risk
-
-        risk = price - sl
-        risk = max(min_risk, min(risk, max_risk))
-
-        tp = price + risk * rr_target
-        return sl, tp
-
-    elif df["ShortSignal"].iloc[i]:
+    elif df["ShortSignal"].iloc[i]: 
         swing_high = df["High"].iloc[max(0, i-10):i].max()
-        if np.isnan(swing_high):
-            swing_high = price + atr
-
-        sl_vwap = vwap + atr * 0.5
-        sl = max(swing_high, sl_vwap)
-
-        # FIX: SL darf nicht unter Preis liegen
-        if sl <= price:
-            sl = price + min_risk
-
-        risk = sl - price
-        risk = max(min_risk, min(risk, max_risk))
-
-        tp = price - risk * rr_target
-        return sl, tp
-
+        if np.isnan(swing_high): 
+            swing_high = price + atr 
+            sl_vwap = vwap + atr * 0.5 
+            sl = max(swing_high, sl_vwap) 
+            # FIX: SL darf nicht unter Preis liegen 
+            if sl <= price: sl = price + min_risk 
+            risk = sl - price 
+            risk = max(min_risk, min(risk, max_risk)) 
+            tp = price - risk * rr_target 
+        return sl, tp 
     return np.nan, np.nan
+
 
 ATR_MULT_SL = 1.5
 ATR_MULT_TP = 2.5
@@ -1229,13 +1368,13 @@ for i in range(1, len(df)):
 
     # 1) Neue Signale → NUR HIER initial SL/TP setzen
     if new_long:
-        sl, tp = calculate_sl_tp(df, i)
+        sl, tp = calculate_sl_tp(df, i, rr_target=2)
         if sl is not None:
             df.at[df.index[i], "SL"] = sl
             df.at[df.index[i], "TP"] = tp
 
     elif new_short:
-        sl, tp = calculate_sl_tp(df, i)
+        sl, tp = calculate_sl_tp(df, i, rr_target=2)
         if sl is not None:
             df.at[df.index[i], "SL"] = sl
             df.at[df.index[i], "TP"] = tp
