@@ -1251,6 +1251,18 @@ for i in range(1, len(df)):
  
 df["ORB_High"] = df["High"].rolling(12).max()   # erste Stunde (bei 5m = 12 Kerzen)
 df["ORB_Low"] = df["Low"].rolling(12).min()
+  
+def get_smart_signal(df, i):
+    long_score = df["LongScore"].iloc[i]
+    short_score = df["ShortScore"].iloc[i]
+    delta = long_score - short_score
+
+    if long_score >= MIN_SCORE and delta >= DELTA_THRESHOLD:
+        return "LONG", long_score, short_score, delta
+    elif short_score >= MIN_SCORE and delta <= -DELTA_THRESHOLD:
+        return "SHORT", long_score, short_score, delta
+    else:
+        return "NEUTRAL", long_score, short_score, delta  
      
 def get_entry_signal(df, i, bias):
     price = df["Close"].iloc[i]
@@ -1347,7 +1359,10 @@ else:
 # Ausgabe
 print(f"SMART {signal_type} | Score: {ls:.2f} | Δ {delta:.2f}")
     
-signal = get_entry_signal(df, i, signal_type)
+i = len(df) - 1
+
+smart_type, long_score, short_score, delta = get_smart_signal(df, i)
+signal = get_entry_signal(df, i, smart_type)
 
 
 # -----------------------
@@ -2086,27 +2101,29 @@ col22.metric(
     delta=f"{short_score - long_score:.2f}"
 )    
 
-if signal_type == "LONG":
+# SMART Signal (immer anzeigen)
+if smart_type == "LONG":
     st.success(f"🚀 SMART LONG | Score: {long_score:.2f} | Δ {delta:.2f}")
-elif signal_type == "SHORT":
+elif smart_type == "SHORT":
     st.error(f"🔻 SMART SHORT | Score: {short_score:.2f} | Δ {delta:.2f}")
 else:
     st.info("⚖️ NO CLEAR SIGNAL")
 
+# A+ Signal (nur wenn vorhanden)
 if signal:
     if signal["type"] == "LONG":
         st.success(
             f"🚀 A+ LONG\n"
             f"Entry: {signal['price']:.2f}\n"
             f"SL: {signal['sl']:.2f} | TP: {signal['tp']:.2f}\n"
-            f"RR: {signal['rr']:.2f} | Δ: {signal['delta']:.2f}"
+            f"RR: {signal['rr']:.2f}"
         )
     else:
         st.error(
             f"🔻 A+ SHORT\n"
             f"Entry: {signal['price']:.2f}\n"
             f"SL: {signal['sl']:.2f} | TP: {signal['tp']:.2f}\n"
-            f"RR: {signal['rr']:.2f} | Δ: {signal['delta']:.2f}"
+            f"RR: {signal['rr']:.2f}"
         )
 else:
     st.info("⚖️ NO A+ SETUP")
@@ -2140,18 +2157,25 @@ def send_telegram(msg):
 if "sent_signals" not in st.session_state:
     st.session_state.sent_signals = set()
 
-if signal_type and signal_type not in st.session_state.sent_signals:
-    
- 
-    message = (
-        f"{symbol} SIGNAL\n\n"
-        f"{signal_type}\n"
-        f"LongScore: {long_score:.2f} / ShortScore: {short_score:.2f}\n"
-        f"VWAP: {df['VWAP_RTH'].iloc[-1]:.2f}\n"
-        f"RSI: {df['RSI'].iloc[-1]:.2f}\n\n"
-        f"SL: {signal['sl']:.2f}\n"
-        f"TP: {signal['tp']:.2f}"
-    )
+# 👉 NUR A+ SIGNATUREN SENDEN
+if signal:
+    signal_id = f"{symbol}_{signal['type']}"
+
+    if signal_id not in st.session_state.sent_signals:
+
+        message = (
+            f"{symbol} A+ SIGNAL\n\n"
+            f"{signal['type']}\n"
+            f"Entry: {signal['price']:.2f}\n"
+            f"SL: {signal['sl']:.2f}\n"
+            f"TP: {signal['tp']:.2f}\n"
+            f"RR: {signal['rr']:.2f}\n\n"
+            f"Score: {long_score:.2f}/{short_score:.2f} | Δ {delta:.2f}"
+        )
+
+        send_telegram(message)
+
+        st.session_state.sent_signals.add(signal_id)
 
     send_telegram(message)
 
