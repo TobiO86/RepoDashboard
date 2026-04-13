@@ -270,25 +270,40 @@ alerts = load_alerts()
 # -----------------------
 st.sidebar.header("📊 Preisalarme")
 
-PriceAlerttickers = []
+PriceAlerttickers = []  # 🔥 IMMER vorher definieren
 
-for i in range(2):  # 2 Felder
-    
-    PriceAlertticker = st.sidebar.text_input(f"Ticker {i+1}", key=f"ticker_{i}")
-    price_above = st.sidebar.number_input(f"{PriceAlertticker} >= Preis", key=f"above_{i}", value=0.0)
-    price_below = st.sidebar.number_input(f"{PriceAlertticker} <= Preis", key=f"below_{i}", value=0.0)
+for i in range(2):
 
-    if PriceAlertticker:
+    ticker_input = st.sidebar.text_input(f"Ticker {i+1}", key=f"ticker_{i}")
+
+    # 👉 Label sauber lösen (kein undefinierter Name!)
+    label = ticker_input if ticker_input else f"Ticker {i+1}"
+
+    price_above = st.sidebar.number_input(f"{label} ≥ Preis", key=f"above_{i}", value=0.0)
+    price_below = st.sidebar.number_input(f"{label} ≤ Preis", key=f"below_{i}", value=0.0)
+
+    if ticker_input:
         PriceAlerttickers.append({
-            "ticker": PriceAlertticker.upper(),
+            "ticker": ticker_input.upper(),
             "above": price_above,
             "below": price_below
         })
 
 if st.sidebar.button("💾 Alarme speichern"):
-    alerts = {t["ticker"]: {"above": t["above"], "below": t["below"]} for t in tickers}
-    save_alerts(alerts)
-    st.sidebar.success("Gespeichert!")
+
+    if len(PriceAlerttickers) == 0:
+        st.sidebar.warning("Bitte mindestens einen Ticker eingeben")
+
+    else:
+        alerts = {
+            t["ticker"]: {
+                "above": t["above"],
+                "below": t["below"]
+            } for t in PriceAlerttickers
+        }
+
+        save_alerts(alerts)
+        st.sidebar.success("Gespeichert!")
     
 TRIGGER_FILE = "triggered.json"
 
@@ -306,7 +321,8 @@ triggered = load_triggered()
 
 def check_alerts():
     global triggered
-
+    if not alerts:
+        return
     for ticker, levels in alerts.items():
 
         try:
