@@ -327,7 +327,15 @@ def check_alerts():
 
         try:
             data = yf.download(ticker, period="1d", interval="1m")
+            if data.empty:
+                continue
+
             price = data["Close"].iloc[-1]
+
+            if price is None:
+                continue
+
+            price = float(price)
         except:
             continue
 
