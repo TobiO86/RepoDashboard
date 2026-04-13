@@ -225,7 +225,7 @@ def calculate_sl_tp(df, i, setup, rr_target=2):
 
     return np.nan, np.nan
 
-
+st_autorefresh(interval=60000, key="alerts")  # alle 60s
 # -----------------------
 # TELEGRAM ALERTS
 # -----------------------
@@ -327,7 +327,7 @@ def check_alerts():
     for ticker, levels in alerts.items():
 
         try:
-            data = yf.download(ticker, period="1d", interval="1m")
+            data = yf.download(ticker, period="5d", interval="5m")
             if data.empty:
                 continue
 
