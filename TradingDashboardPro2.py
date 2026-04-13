@@ -10,6 +10,7 @@ from datetime import datetime, time
 from streamlit_autorefresh import st_autorefresh
 import pytz
 import os
+import json
 
 # -----------------------
 # AUTO REFRESH (NUR TOP DATEN)
@@ -42,8 +43,7 @@ SESSION = get_market_session()
 
 if "symbol" not in st.session_state:
     st.session_state.symbol = "BTC-USD"
-
-    
+       
 # -----------------------
 # MARKET SCANNER (PRO LEVEL)
 # -----------------------
@@ -225,9 +225,10 @@ def calculate_sl_tp(df, i, setup, rr_target=2):
 
     return np.nan, np.nan
 
-            # -----------------------
-            # TELEGRAM ALERTS
-            # -----------------------
+
+# -----------------------
+# TELEGRAM ALERTS
+# -----------------------
 
 def send_telegram(msg):
 
@@ -247,6 +248,97 @@ def send_telegram(msg):
     except Exception as e:
         st.warning(f"Telegram Error: {e}")
 
+ALERT_FILE = "price_alerts.json"
+
+# -----------------------
+# LOAD / SAVE
+# -----------------------
+def load_alerts():
+    if os.path.exists(ALERT_FILE):
+        with open(ALERT_FILE, "r") as f:
+            return json.load(f)
+    return {}
+
+def save_alerts(alerts):
+    with open(ALERT_FILE, "w") as f:
+        json.dump(alerts, f)
+
+alerts = load_alerts()
+
+# -----------------------
+# SIDEBAR UI
+# -----------------------
+st.sidebar.header("📊 Preisalarme")
+
+PriceAlerttickers = []
+
+for i in range(2):  # 2 Felder
+    
+    PriceAlertticker = st.sidebar.text_input(f"Ticker {i+1}", key=f"ticker_{i}")
+    price_above = st.sidebar.number_input(f"{PriceAlertticker} >= Preis", key=f"above_{i}", value=0.0)
+    price_below = st.sidebar.number_input(f"{PriceAlertticker} <= Preis", key=f"below_{i}", value=0.0)
+
+    if PriceAlertticker:
+        PriceAlerttickers.append({
+            "ticker": PriceAlertticker.upper(),
+            "above": price_above,
+            "below": price_below
+        })
+
+if st.sidebar.button("💾 Alarme speichern"):
+    alerts = {t["ticker"]: {"above": t["above"], "below": t["below"]} for t in tickers}
+    save_alerts(alerts)
+    st.sidebar.success("Gespeichert!")
+    
+TRIGGER_FILE = "triggered.json"
+
+def load_triggered():
+    if os.path.exists(TRIGGER_FILE):
+        with open(TRIGGER_FILE, "r") as f:
+            return json.load(f)
+    return {}
+
+def save_triggered(data):
+    with open(TRIGGER_FILE, "w") as f:
+        json.dump(data, f)
+
+triggered = load_triggered()   
+
+def check_alerts():
+    global triggered
+
+    for ticker, levels in alerts.items():
+
+        try:
+            data = yf.download(ticker, period="1d", interval="1m")
+            price = data["Close"].iloc[-1]
+        except:
+            continue
+
+        if ticker not in triggered:
+            triggered[ticker] = {"above": False, "below": False}
+
+        # 🔼 ABOVE
+        if levels["above"] > 0:
+            if price >= levels["above"] and not triggered[ticker]["above"]:
+                send_telegram(f"🚀 {ticker} über {levels['above']} → {price:.2f}")
+                triggered[ticker]["above"] = True
+
+            if price < levels["above"]:
+                triggered[ticker]["above"] = False  # Reset
+
+        # 🔽 BELOW
+        if levels["below"] > 0:
+            if price <= levels["below"] and not triggered[ticker]["below"]:
+                send_telegram(f"📉 {ticker} unter {levels['below']} → {price:.2f}")
+                triggered[ticker]["below"] = True
+
+            if price > levels["below"]:
+                triggered[ticker]["below"] = False  # Reset
+
+    save_triggered(triggered) 
+    
+check_alerts()
 
 @st.cache_data(ttl=180)
 def scan_market(limit=100):
