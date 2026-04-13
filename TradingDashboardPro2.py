@@ -303,6 +303,7 @@ if st.sidebar.button("💾 Alarme speichern"):
         }
 
         save_alerts(alerts)
+        alerts = load_alerts()
         st.sidebar.success("Gespeichert!")
     
 TRIGGER_FILE = "triggered.json"
