@@ -1248,7 +1248,11 @@ df["cum_delta"] = df["delta"].cumsum()
 def detect_market_regime(df):
     price = df["Close"]
     # VWAP pro Zeile auswählen
-    vwap = get_active_vwap(df)
+    if "VWAP_RTH" not in df.columns:
+        return "UNKNOWN"
+
+    price = df["Close"]
+    vwap = df["VWAP_RTH"]
 
     # VWAP Cross Count
     crosses = ((price > vwap) != (price.shift(1) > vwap.shift(1))).rolling(20).sum()
