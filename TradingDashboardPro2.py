@@ -208,11 +208,15 @@ def download_data(symbols):
 
 def process_symbol(s, data_all):
 
-    df = data_all.get(s)
+    df = data_all.get(s)   # ✅ HIER bleiben!
+
     if df is None or len(df) < 10:
         return None
+
+    df = df.copy()  # ✅ wichtig (sonst Pandas Bugs)
+
     df.index = pd.to_datetime(df.index)
-    
+
     df = mark_premarket(df)
     
     # VWAP RTH (Pflicht!)
@@ -1138,7 +1142,10 @@ df["VWAP_upper2"] = df["VWAP_RTH"] + 2*vwap_dev
 df["VWAP_lower2"] = df["VWAP_RTH"] - 2*vwap_dev
 
 
-df["Trend_Strong"] = df["ADX"] > 25
+if "ADX" in df.columns:
+    df["Trend_Strong"] = df["ADX"] > 25
+else:
+    df["Trend_Strong"] = False
 df["Trend_Long"] = df["+DI"] > df["-DI"]
 df["Trend_Short"] = df["-DI"] > df["+DI"]
 
@@ -1168,6 +1175,7 @@ df["-DI"] = 100 * (df["-DM"].ewm(span=14, adjust=False).mean() / atr)
 
 dx = (abs(df["+DI"] - df["-DI"]) / (df["+DI"] + df["-DI"])) * 100
 df["ADX"] = dx.ewm(span=14, adjust=False).mean()
+df["ADX"] = df["ADX"].fillna(0)
 
 kc_mult = 1.5
 df["KC_MID"] = df["Close"].ewm(span=20, adjust=False).mean()  # zentrale Linie, EMA20
