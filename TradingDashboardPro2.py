@@ -669,7 +669,7 @@ def scan_market(limit=100):
 
             setup = None
 
-            if total_score >= 5:
+            if total_score >= 7:
                 setup = "LONG" if long_score > short_score else "SHORT"
             else:
                 continue
@@ -692,7 +692,7 @@ def scan_market(limit=100):
             rr = reward / risk
 
             # 🔹 QUALITY FILTER
-            if rr < 1.3:
+            if rr < 1.5:
                 continue
 
             if setup:
