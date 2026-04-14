@@ -248,6 +248,17 @@ def process_symbol(s, data_all):
     df = mark_premarket(df)
     df = add_indicators(df)
     
+    # 👉 HIER DIREKT DANACH
+    if "ADX" in df.columns:
+        df["Trend_Strong"] = df["ADX"] > 25
+    else:
+        df["Trend_Strong"] = False
+
+    if "+DI" in df.columns and "-DI" in df.columns:
+        df["Trend_Long"] = df["+DI"] > df["-DI"]
+    else:
+        df["Trend_Long"] = False
+    
     # VWAP RTH (Pflicht!)
     df["VWAP_RTH"] = (df["Close"] * df["Volume"]).cumsum() / df["Volume"].cumsum().replace(0, np.nan)
     df["VWAP_PRE"] = df["VWAP_RTH"]
@@ -352,7 +363,7 @@ def process_symbol(s, data_all):
 
 
 
-
+e
 def calculate_sl_tp(df, i, setup, rr_target=2):
     price = df["Close"].iloc[i]
     atr = df["ATR"].iloc[i]
