@@ -469,7 +469,7 @@ def mark_premarket(df):
 
     return df
 
-@st.cache_data(ttl=180)
+@st.cache_data(ttl=300)
 def scan_market(limit=100):
     symbols = filter_symbols_by_session(get_sp500_symbols(), SESSION)[:limit]
     results = []
@@ -1929,7 +1929,7 @@ df["ADX"] = dx.ewm(span=14, adjust=False).mean()
 # -----------------------
 
 
-st_autorefresh(interval=5000, key="price_refresh")
+st_autorefresh(interval=60000, key="price_refresh")
 
 @st.cache_data(ttl=86400)
 def get_company_name(symbol):
