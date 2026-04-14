@@ -11,7 +11,39 @@ from streamlit_autorefresh import st_autorefresh
 import pytz
 import os
 import json
+import sqlite3
 
+DB_FILE = "alerts.db"
+
+def get_conn():
+    return sqlite3.connect(DB_FILE, check_same_thread=False)
+
+def init_db():
+    conn = get_conn()
+    c = conn.cursor()
+
+    # Alerts Tabelle
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS alerts (
+            ticker TEXT PRIMARY KEY,
+            above REAL,
+            below REAL
+        )
+    """)
+
+    # Trigger Status
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS triggered (
+            ticker TEXT PRIMARY KEY,
+            above INTEGER,
+            below INTEGER
+        )
+    """)
+
+    conn.commit()
+    conn.close()
+
+init_db()
 # -----------------------
 # AUTO REFRESH (NUR TOP DATEN)
 # -----------------------
@@ -253,18 +285,35 @@ ALERT_FILE = "price_alerts.json"
 # -----------------------
 # LOAD / SAVE
 # -----------------------
-def load_alerts():
-    if os.path.exists(ALERT_FILE):
-        with open(ALERT_FILE, "r") as f:
-            return json.load(f)
-    return {}
+def save_alerts_sql(alerts_dict):
+    conn = get_conn()
+    c = conn.cursor()
 
-def save_alerts(alerts):
-    with open(ALERT_FILE, "w") as f:
-        json.dump(alerts, f)
+    c.execute("DELETE FROM alerts")
 
-alerts = load_alerts()
+    for ticker, v in alerts_dict.items():
+        c.execute(
+            "INSERT INTO alerts (ticker, above, below) VALUES (?, ?, ?)",
+            (ticker, v["above"], v["below"])
+        )
 
+    conn.commit()
+    conn.close()
+
+
+def load_alerts_sql():
+    conn = get_conn()
+    c = conn.cursor()
+
+    c.execute("SELECT ticker, above, below FROM alerts")
+    rows = c.fetchall()
+
+    conn.close()
+
+    return {
+        r[0]: {"above": r[1], "below": r[2]}
+        for r in rows
+    }
 # -----------------------
 # SIDEBAR UI
 # -----------------------
@@ -288,6 +337,37 @@ for i in range(2):
             "above": price_above,
             "below": price_below
         })
+    
+def load_triggered_sql():
+    conn = get_conn()
+    c = conn.cursor()
+
+    c.execute("SELECT ticker, above, below FROM triggered")
+    rows = c.fetchall()
+
+    conn.close()
+
+    return {
+        r[0]: {"above": bool(r[1]), "below": bool(r[2])}
+        for r in rows
+    }
+
+
+def save_triggered_sql(triggered):
+    conn = get_conn()
+    c = conn.cursor()
+
+    c.execute("DELETE FROM triggered")
+
+    for ticker, v in triggered.items():
+        c.execute(
+            "INSERT INTO triggered (ticker, above, below) VALUES (?, ?, ?)",
+            (ticker, int(v["above"]), int(v["below"]))
+        )
+
+    conn.commit()
+    conn.close()  
+
 
 if st.sidebar.button("💾 Alarme speichern"):
 
@@ -302,28 +382,16 @@ if st.sidebar.button("💾 Alarme speichern"):
             } for t in PriceAlerttickers
         }
 
-        save_alerts(alerts)
-        alerts = load_alerts()
+        save_alerts_sql(alerts)
         st.sidebar.success("Gespeichert!")
-    
-TRIGGER_FILE = "triggered.json"
-
-def load_triggered():
-    if os.path.exists(TRIGGER_FILE):
-        with open(TRIGGER_FILE, "r") as f:
-            return json.load(f)
-    return {}
-
-def save_triggered(data):
-    with open(TRIGGER_FILE, "w") as f:
-        json.dump(data, f)
-
-triggered = load_triggered()   
-
+        
 def check_alerts():
-    global triggered
+    alerts = load_alerts_sql()
+    triggered = load_triggered_sql()
+
     if not alerts:
         return
+
     for ticker, levels in alerts.items():
 
         try:
@@ -331,13 +399,9 @@ def check_alerts():
             if data.empty:
                 continue
 
-            price = data["Close"].iloc[-1]
-
-            if price is None:
-                continue
-
-            price = float(price)
-        except:
+            price = float(data["Close"].iloc[-1])
+        except Exception as e:
+            st.write(f"Fehler bei {ticker}: {e}")
             continue
 
         if ticker not in triggered:
@@ -350,7 +414,7 @@ def check_alerts():
                 triggered[ticker]["above"] = True
 
             if price < levels["above"]:
-                triggered[ticker]["above"] = False  # Reset
+                triggered[ticker]["above"] = False
 
         # 🔽 BELOW
         if levels["below"] > 0:
@@ -359,11 +423,14 @@ def check_alerts():
                 triggered[ticker]["below"] = True
 
             if price > levels["below"]:
-                triggered[ticker]["below"] = False  # Reset
+                triggered[ticker]["below"] = False
 
-    save_triggered(triggered) 
+    save_triggered_sql(triggered)
     
 check_alerts()
+
+st.write("Alerts:", load_alerts_sql())
+st.write("Triggered:", load_triggered_sql())
 
 @st.cache_data(ttl=180)
 def scan_market(limit=100):
