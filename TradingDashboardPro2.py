@@ -1359,7 +1359,7 @@ for i in range(start, len(df)):
     prev = df.iloc[i-1]
     curr = df.iloc[i]
     
-    vwap = get_active_vwap(curr)
+    vwap = curr.get("VWAP_RTH", np.nan)
 
     score_long = 0
 
