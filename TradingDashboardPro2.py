@@ -504,10 +504,17 @@ def scan_market(limit=100):
             if df.empty:
                 continue
 
-            session = df["Session"].values
-            volume = df["Volume"].values
+            if "Session" not in df.columns:
+                df["Session"] = "RTH"
 
-            df["Vol_RTH"] = np.where(session == "RTH", volume, np.nan)
+            if "Volume" not in df.columns:
+                continue
+
+            df["Vol_RTH"] = np.where(
+                df["Session"].to_numpy() == "RTH",
+                df["Volume"].to_numpy(),
+                np.nan
+)
             df["Vol_Avg_RTH"] = df["Vol_RTH"].rolling(20, min_periods=5).mean()
             df["VWAP_RTH"] = (df["Close"] * df["Volume"]).groupby(df.index.date).cumsum() / df["Volume"].groupby(df.index.date).cumsum()
             ema20 = df["Close"].ewm(span=20).mean()
