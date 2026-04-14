@@ -12,6 +12,7 @@ import pytz
 import os
 import json
 import sqlite3
+from concurrent.futures import ThreadPoolExecutor
 
 DB_FILE = "alerts.db"
 st.cache_data.clear()
@@ -173,6 +174,7 @@ def get_active_vwap(row):
         return row["VWAP_AH"]
     return row["Close"]
 
+@st.cache_data(ttl=300)
 def download_data(symbols):
     data_all = {}
 
@@ -200,6 +202,249 @@ def download_data(symbols):
         data_all[symbols[0]] = d.dropna()
 
     return data_all
+
+def process_symbol(s, data_all):
+
+    df = data_all.get(s)
+    if df is None or len(df) < 10:
+        return None
+
+    df = mark_premarket(df)
+
+    if not isinstance(df.index, pd.DatetimeIndex):
+        return None
+
+    if df.index.tz is None:
+        df.index = df.index.tz_localize("UTC")
+
+    df.index = df.index.tz_convert("US/Eastern")
+
+    if "Session" not in df.columns:
+        df["Session"] = "RTH"
+
+    df["Vol_RTH"] = np.where(
+        df["Session"].to_numpy() == "RTH",
+        df["Volume"].to_numpy(),
+        np.nan
+    )
+    
+    df["Vol_Avg_RTH"] = df["Vol_RTH"].rolling(20, min_periods=5).mean()
+    df["VWAP_RTH"] = (df["Close"] * df["Volume"]).groupby(df.index.date).cumsum() / df["Volume"].groupby(df.index.date).cumsum()
+    ema20 = df["Close"].ewm(span=20).mean()
+    ema50 = df["Close"].ewm(span=50).mean()
+    ema200 = df["Close"].ewm(span=200).mean()
+
+    price = df["Close"].iloc[-1]
+
+    # --- Liquidity ---
+    avg_vol = df["Vol_Avg_RTH"].iloc[-1]
+    dollar_vol = price * avg_vol
+
+    score = 0
+
+    # 🔹 Liquidity
+    if dollar_vol > 5_000_000:
+        score += 1
+    if dollar_vol > 20_000_000:
+        score += 1
+
+    df["ATR"] = compute_atr(df)
+    
+    atr = df["ATR"].iloc[-1]
+    atr_pct = atr / price
+
+    # 🔹 Volatility
+    if atr_pct > 0.003:
+        score += 1
+    if atr_pct > 0.01:
+        score += 1
+
+    # -----------------------
+    # DMI + ADX
+    # -----------------------
+    up_move = df["High"].diff()
+    down_move = -df["Low"].diff()
+
+    df["+DM"] = np.where((up_move > down_move) & (up_move > 0), up_move, 0)
+    df["-DM"] = np.where((down_move > up_move) & (down_move > 0), down_move, 0)
+
+    plus_dm = df["+DM"].ewm(span=14, adjust=False).mean()
+    minus_dm = df["-DM"].ewm(span=14, adjust=False).mean()
+
+    df["+DI"] = 100 * (plus_dm / df["ATR"])
+    df["-DI"] = 100 * (minus_dm / df["ATR"])
+
+    dx = (np.abs(df["+DI"] - df["-DI"]) / (df["+DI"] + df["-DI"])) * 100
+    df["ADX"] = dx.ewm(span=14, adjust=False).mean()
+
+    # Trend Flags
+    df["Trend_Strong"] = df["ADX"] > 25
+    df["Trend_Long"] = df["+DI"] > df["-DI"]
+    df["Trend_Short"] = df["-DI"] > df["+DI"]
+    
+    # --- Relative Volume ---
+    rel_vol = df["Volume"].iloc[-1] / avg_vol
+
+    # 🔹 Volume
+    if rel_vol > 1.2:
+        score += 1
+    if rel_vol > 1.5:
+        score += 1
+    
+    curr = df.iloc[-1]
+    vwap = get_active_vwap(curr)
+
+    delta = df["Close"].diff()
+    gain = delta.clip(lower=0)
+    loss = -delta.clip(upper=0)
+    avg_gain = gain.ewm(alpha=1/14).mean()
+    avg_loss = loss.ewm(alpha=1/14).mean().replace(0,1e-10)
+    rsi = 100 - (100 / (1 + avg_gain / avg_loss))
+    rsi = rsi.iloc[-1]
+
+    vol_spike = df["Volume"].iloc[-1] > 1.5 * df["Volume"].rolling(20).mean().iloc[-1]
+    sweep_high = df["High"].iloc[-2] > df["High"].rolling(20).max().iloc[-3]
+    sweep_low = df["Low"].iloc[-2] < df["Low"].rolling(20).min().iloc[-3]
+
+    trend_bull = ema20.iloc[-1] > ema50.iloc[-1]
+    trend_bear = ema20.iloc[-1] < ema50.iloc[-1]
+
+    # -----------------------
+    # SMART SCORING SYSTEM
+    # -----------------------
+
+    long_score = 0
+    short_score = 0
+
+    # 🔹 VWAP Position
+    if price > vwap:
+        long_score += 1
+    else:
+        short_score += 1
+
+    # 🔹 Trend (EMA)
+    if ema20.iloc[-1] > ema50.iloc[-1]:
+        long_score += 1
+    else:
+        short_score += 1
+
+    # 🔹 RSI Momentum
+    if rsi > 55:
+        long_score += 1
+    elif rsi < 45:
+        short_score += 1
+
+    # 🔹 Volume Spike
+    if vol_spike:
+        long_score += 1
+        short_score += 1  # beide profitieren
+
+    # 🔹 Liquidity Sweeps
+    if sweep_low:
+        long_score += 1
+    if sweep_high:
+        short_score += 1
+
+    # -----------------------
+    # FINAL SCORE
+    # -----------------------
+
+    base_score = 0
+
+    # Liquidity
+    if dollar_vol > 5_000_000:
+        base_score += 1
+    if dollar_vol > 20_000_000:
+        base_score += 1
+
+    # Volatility
+    if atr_pct > 0.003:
+        base_score += 1
+    if atr_pct > 0.01:
+        base_score += 1
+
+    # Relative Volume
+    if rel_vol > 1.2:
+        base_score += 1
+    if rel_vol > 1.5:
+        base_score += 1
+
+    # Gesamtbewertung
+    total_score = max(long_score, short_score) + base_score
+    delta_score = long_score - short_score
+    # -----------------------
+    # SETUP ENTSCHEIDUNG
+    # -----------------------
+
+    setup = None
+
+    if total_score < 7:
+        return None
+    if long_score > short_score:
+        setup = "LONG"
+    else:
+        setup = "SHORT"
+        
+    score = total_score
+
+    i = len(df) - 1
+    sl, tp = calculate_sl_tp(df, i, setup, rr_target=2)
+    
+    risk = abs(price - sl)
+    reward = abs(tp - price)
+
+    rr = reward / risk
+    signal_ok = (rr >= 1.5 and total_score >= 5)
+    
+    if setup is None:
+        return None
+    
+    signal = {
+        "symbol": s,
+        "type": setup,
+        "price": price,
+        "sl": sl,
+        "tp": tp,
+        "rr": rr,
+        "score": score,
+        "delta": delta_score
+    }
+     # -----------------------
+    # ANTI-SPAM LOGIK
+    # -----------------------
+
+    if "sent_signals" not in st.session_state:
+        st.session_state.sent_signals = set()
+
+    signal_id = f"{signal['symbol']}_{signal['type']}_{round(signal['price'],1)}"
+
+    if signal_id not in st.session_state.sent_signals and signal_ok:
+
+        message = (
+            f"🚨 {signal['symbol']} {signal['type']}\n\n"
+            f"Entry: {signal['price']:.2f}\n"
+            f"SL: {signal['sl']:.2f}\n"
+            f"TP: {signal['tp']:.2f}\n"
+            f"RR: {signal['rr']:.2f}\n\n"
+            f"Score: {signal['score']} | Δ {signal['delta']}"
+        )
+
+        send_telegram(message)
+
+        st.session_state.sent_signals.add(signal_id)
+       
+    return {
+        "symbol": s,
+        "type": setup,
+        "price": price,
+        "sl": sl,
+        "tp": tp,
+        "rr": rr,
+        "score": score,
+        "delta": delta_score
+    }
+
+
 
 def calculate_sl_tp(df, i, setup, rr_target=2):
     price = df["Close"].iloc[i]
@@ -482,265 +727,15 @@ def scan_market(limit=100):
     # --- Download ---
     data_all = download_data(symbols)
    
+    with ThreadPoolExecutor(max_workers=8) as executor:
+        results = list(executor.map(
+            lambda s: process_symbol(s, data_all),
+            symbols
+        ))
 
-    # --- Scan ---
-    for s in symbols:
-        df = data_all.get(s)
-        if df is None or len(df) < 10:
-            continue
-
-        try:
-            df = data_all.get(s)
-
-            if df is None or not isinstance(df, pd.DataFrame) or df.empty:
-                continue
-
-            df = mark_premarket(df)
-
-            if "Session" not in df.columns:
-                df["Session"] = "RTH"
-
-            if "Volume" not in df.columns:
-                continue
-
-            df["Vol_RTH"] = np.where(
-                df["Session"].to_numpy() == "RTH",
-                df["Volume"].to_numpy(),
-                np.nan
-)
-            df["Vol_Avg_RTH"] = df["Vol_RTH"].rolling(20, min_periods=5).mean()
-            df["VWAP_RTH"] = (df["Close"] * df["Volume"]).groupby(df.index.date).cumsum() / df["Volume"].groupby(df.index.date).cumsum()
-            ema20 = df["Close"].ewm(span=20).mean()
-            ema50 = df["Close"].ewm(span=50).mean()
-            ema200 = df["Close"].ewm(span=200).mean()
-
-            price = df["Close"].iloc[-1]
-
-            # --- Liquidity ---
-            avg_vol = df["Vol_Avg_RTH"].iloc[-1]
-            dollar_vol = price * avg_vol
-
-            score = 0
-
-            # 🔹 Liquidity
-            if dollar_vol > 5_000_000:
-                score += 1
-            if dollar_vol > 20_000_000:
-                score += 1
-
-            df["ATR"] = compute_atr(df)
-            
-            if df["ATR"].isna().all():
-                continue
-            atr = df["ATR"].iloc[-1]
-            atr_pct = atr / price
-
-            # 🔹 Volatility
-            if atr_pct > 0.003:
-                score += 1
-            if atr_pct > 0.01:
-                score += 1
-
-            # -----------------------
-            # DMI + ADX
-            # -----------------------
-            up_move = df["High"].diff()
-            down_move = -df["Low"].diff()
-
-            df["+DM"] = np.where((up_move > down_move) & (up_move > 0), up_move, 0)
-            df["-DM"] = np.where((down_move > up_move) & (down_move > 0), down_move, 0)
-
-            plus_dm = df["+DM"].ewm(span=14, adjust=False).mean()
-            minus_dm = df["-DM"].ewm(span=14, adjust=False).mean()
-
-            df["+DI"] = 100 * (plus_dm / df["ATR"])
-            df["-DI"] = 100 * (minus_dm / df["ATR"])
-
-            dx = (np.abs(df["+DI"] - df["-DI"]) / (df["+DI"] + df["-DI"])) * 100
-            df["ADX"] = dx.ewm(span=14, adjust=False).mean()
-
-            # Trend Flags
-            df["Trend_Strong"] = df["ADX"] > 25
-            df["Trend_Long"] = df["+DI"] > df["-DI"]
-            df["Trend_Short"] = df["-DI"] > df["+DI"]
-            
-            if avg_vol is None or avg_vol == 0 or np.isnan(avg_vol):
-                continue
-            # --- Relative Volume ---
-            rel_vol = df["Volume"].iloc[-1] / avg_vol
-
-            # 🔹 Volume
-            if rel_vol > 1.2:
-                score += 1
-            if rel_vol > 1.5:
-                score += 1
-            
-            curr = df.iloc[-1]
-            vwap = get_active_vwap(curr)
-
-            delta = df["Close"].diff()
-            gain = delta.clip(lower=0)
-            loss = -delta.clip(upper=0)
-            avg_gain = gain.ewm(alpha=1/14).mean()
-            avg_loss = loss.ewm(alpha=1/14).mean().replace(0,1e-10)
-            rsi = 100 - (100 / (1 + avg_gain / avg_loss))
-            rsi = rsi.iloc[-1]
-
-            vol_spike = df["Volume"].iloc[-1] > 1.5 * df["Volume"].rolling(20).mean().iloc[-1]
-            sweep_high = df["High"].iloc[-2] > df["High"].rolling(20).max().iloc[-3]
-            sweep_low = df["Low"].iloc[-2] < df["Low"].rolling(20).min().iloc[-3]
-
-            trend_bull = ema20.iloc[-1] > ema50.iloc[-1]
-            trend_bear = ema20.iloc[-1] < ema50.iloc[-1]
-
-            # -----------------------
-            # SMART SCORING SYSTEM
-            # -----------------------
-
-            long_score = 0
-            short_score = 0
-
-            # 🔹 VWAP Position
-            if price > vwap:
-                long_score += 1
-            else:
-                short_score += 1
-
-            # 🔹 Trend (EMA)
-            if ema20.iloc[-1] > ema50.iloc[-1]:
-                long_score += 1
-            else:
-                short_score += 1
-
-            # 🔹 RSI Momentum
-            if rsi > 55:
-                long_score += 1
-            elif rsi < 45:
-                short_score += 1
-
-            # 🔹 Volume Spike
-            if vol_spike:
-                long_score += 1
-                short_score += 1  # beide profitieren
-
-            # 🔹 Liquidity Sweeps
-            if sweep_low:
-                long_score += 1
-            if sweep_high:
-                short_score += 1
-
-            # -----------------------
-            # FINAL SCORE
-            # -----------------------
-
-            base_score = 0
-
-            # Liquidity
-            if dollar_vol > 5_000_000:
-                base_score += 1
-            if dollar_vol > 20_000_000:
-                base_score += 1
-
-            # Volatility
-            if atr_pct > 0.003:
-                base_score += 1
-            if atr_pct > 0.01:
-                base_score += 1
-
-            # Relative Volume
-            if rel_vol > 1.2:
-                base_score += 1
-            if rel_vol > 1.5:
-                base_score += 1
-
-            # Gesamtbewertung
-            total_score = max(long_score, short_score) + base_score
-
-            # -----------------------
-            # SETUP ENTSCHEIDUNG
-            # -----------------------
-
-            setup = None
-
-            if total_score >= 7:
-                setup = "LONG" if long_score > short_score else "SHORT"
-            else:
-                continue
-
-            delta_score = long_score - short_score
-            score = total_score
-
-            i = len(df) - 1
-            sl, tp = calculate_sl_tp(df, i, setup, rr_target=2)
-
-            if np.isnan(sl) or np.isnan(tp):
-                continue
-            
-            risk = abs(price - sl)
-            reward = abs(tp - price)
-
-            if risk == 0:
-                continue
-
-            rr = reward / risk
-
-            # 🔹 QUALITY FILTER
-            if rr < 1.5:
-                continue
-
-            if setup:
-                results.append({
-                    "symbol": s,
-                    "price": round(price,2),
-                    "score": score,
-                    "delta": delta_score,
-                    "setup": setup,
-                    "sl": sl,
-                    "tp": tp,
-                })
-                
-            signal = {
-                "symbol": s,
-                "type": setup,
-                "price": price,
-                "sl": sl,
-                "tp": tp,
-                "rr": rr,
-                "score": score,
-                "delta": delta_score
-}
-            
-            # -----------------------
-            # ANTI-SPAM LOGIK
-            # -----------------------
-
-            if "sent_signals" not in st.session_state:
-                st.session_state.sent_signals = set()
-
-            signal_id = f"{signal['symbol']}_{signal['type']}_{round(signal['price'],1)}"
-
-            if signal_id not in st.session_state.sent_signals and total_score >= 5:
-
-                message = (
-                    f"🚨 {signal['symbol']} {signal['type']}\n\n"
-                    f"Entry: {signal['price']:.2f}\n"
-                    f"SL: {signal['sl']:.2f}\n"
-                    f"TP: {signal['tp']:.2f}\n"
-                    f"RR: {signal['rr']:.2f}\n\n"
-                    f"Score: {signal['score']} | Δ {signal['delta']}"
-                )
-
-                send_telegram(message)
-
-                st.session_state.sent_signals.add(signal_id)
-
-        except Exception as e:
-            st.write(f"Fehler bei {s}: {e}")
-            continue
+    results = [r for r in results if r is not None]
 
     df_res = pd.DataFrame(results)
-    if df_res.empty:
-        return [], []
 
     gainers = df_res[df_res['setup']=="LONG"].sort_values("score", ascending=False)
     losers  = df_res[df_res['setup']=="SHORT"].sort_values("score", ascending=False)
