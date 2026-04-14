@@ -582,7 +582,7 @@ def mark_premarket(df):
         try:
             if df.index.tz is None:
                 df.index = df.index.tz_localize("UTC")
-            df.index = df.index.tz_convert("US/Eastern")
+                df.index = df.index.tz_convert("US/Eastern")
 
 
             times = df.index.time
