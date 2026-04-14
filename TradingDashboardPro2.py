@@ -456,9 +456,16 @@ def mark_premarket(df):
         # Timezone fix
         if df.index.tz is None:
             df.index = df.index.tz_localize("UTC")
-        df.index = df.index.tz_convert(et)
+       
 
         times = df.index.time
+        session = np.where(
+            (times >= time(4,0)) & (times < time(9,30)),
+            "PREMARKET",
+            np.where((times >= time(16,0)) & (times < time(20,0)), "AFTERHOURS", "RTH")
+        )
+
+        df["Session"] = session
 
         df.loc[(times >= time(4,0)) & (times < time(9,30)), "Session"] = "PREMARKET"
         df.loc[(times >= time(16,0)) & (times < time(20,0)), "Session"] = "AFTERHOURS"
@@ -479,7 +486,7 @@ def scan_market(limit=100):
 
     # --- Download ---
     data_all = download_data(symbols)
-
+    df.index = df.index.tz_convert(et)
 
     # --- Scan ---
     for s in symbols:
@@ -490,8 +497,6 @@ def scan_market(limit=100):
         try:
             df["Session"] = "RTH"  # einfacher Fallback (Scanner nutzt keine echten Sessions)
 
-            df = mark_premarket(df)
-            
             df = mark_premarket(df)
 
             # 🔥 HARD GUARANTEE
