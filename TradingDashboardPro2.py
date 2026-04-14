@@ -469,7 +469,7 @@ def mark_premarket(df):
 
     return df
 
-@st.cache_data(ttl=300)
+@st.cache_data(ttl=360)
 def scan_market(limit=100):
     symbols = filter_symbols_by_session(get_sp500_symbols(), SESSION)[:limit]
     results = []
@@ -885,7 +885,7 @@ st.sidebar.caption(f"Aktive Kombi: {interval} / {period}")
 # -----------------------
 # DATA
 # -----------------------
-@st.cache_data(ttl=5)
+@st.cache_data(ttl=20)
 def load_fast_price(symbol):
     try:
         df = yf.download(symbol, period="1d", interval="1m", progress=False, threads=False)
@@ -904,7 +904,7 @@ def load_fast_price(symbol):
 
     return df
 
-@st.cache_data(ttl=10)
+@st.cache_data(ttl=20)
 def load_global_prices(symbol):
     eu_map = {
         "TSLA": "TSLA.DE",
@@ -967,7 +967,7 @@ def load_global_prices(symbol):
 
     return eu_price, eu_symbol
 
-@st.cache_data(ttl=60)
+@st.cache_data(ttl=120)
 def load_data_with_premarket(symbol, period, interval):
     # prepost=True liefert auch Pre- und After-Hours
     df = yf.download(
@@ -981,7 +981,7 @@ def load_data_with_premarket(symbol, period, interval):
         df.columns = df.columns.get_level_values(0)
     return df.dropna(subset=["Close"])
 
-@st.cache_data(ttl=60)
+@st.cache_data(ttl=120)
 def load_multi_exchange(symbol, period, interval):
     eu_map = {
         "TSLA": "TSLA.DE",
@@ -1929,7 +1929,7 @@ df["ADX"] = dx.ewm(span=14, adjust=False).mean()
 # -----------------------
 
 
-st_autorefresh(interval=60000, key="price_refresh")
+st_autorefresh(interval=5000, key="price_refresh")
 
 @st.cache_data(ttl=86400)
 def get_company_name(symbol):
