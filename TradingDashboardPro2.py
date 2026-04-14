@@ -440,16 +440,21 @@ st.write("Alerts:", load_alerts_sql())
 st.write("Triggered:", load_triggered_sql())
 
 def mark_premarket(df):
+    import pytz
+    from datetime import time
+
     et = pytz.timezone("US/Eastern")
 
-    if df.index.tz is None:
-        df.index = df.index.tz_localize("UTC").tz_convert(et)
-    else:
+    try:
+        if df.index.tz is None:
+            df.index = df.index.tz_localize("UTC")
         df.index = df.index.tz_convert(et)
-
-    times = df.index.time
+    except Exception as e:
+        return df  # 👉 fallback ohne crash
 
     df["Session"] = "RTH"
+
+    times = df.index.time
 
     df.loc[(times >= time(4,0)) & (times < time(9,30)), "Session"] = "PREMARKET"
     df.loc[(times >= time(16,0)) & (times < time(20,0)), "Session"] = "AFTERHOURS"
