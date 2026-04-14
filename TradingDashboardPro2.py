@@ -184,7 +184,7 @@ def download_data(symbols):
             period="5d",
             interval="5m",
             group_by="ticker",
-            threads=True,
+            threads=False,
             progress=False
         )
     except:
@@ -609,7 +609,7 @@ def scan_market_core(symbols, data_all):
 
     return [r for r in results if r is not None]
 
-@st.cache_data(ttl=360)
+@st.cache_data(ttl=300, max_entries=1)
 def scan_market(limit=100):
 
     symbols = filter_symbols_by_session(get_sp500_symbols(), SESSION)[:limit]
