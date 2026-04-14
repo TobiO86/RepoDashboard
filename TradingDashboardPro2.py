@@ -439,6 +439,23 @@ check_alerts()
 st.write("Alerts:", load_alerts_sql())
 st.write("Triggered:", load_triggered_sql())
 
+def mark_premarket(df):
+    et = pytz.timezone("US/Eastern")
+
+    if df.index.tz is None:
+        df.index = df.index.tz_localize("UTC").tz_convert(et)
+    else:
+        df.index = df.index.tz_convert(et)
+
+    times = df.index.time
+
+    df["Session"] = "RTH"
+
+    df.loc[(times >= time(4,0)) & (times < time(9,30)), "Session"] = "PREMARKET"
+    df.loc[(times >= time(16,0)) & (times < time(20,0)), "Session"] = "AFTERHOURS"
+
+    return df
+
 @st.cache_data(ttl=180)
 def scan_market(limit=100):
     symbols = filter_symbols_by_session(get_sp500_symbols(), SESSION)[:limit]
@@ -929,20 +946,6 @@ def load_data_with_premarket(symbol, period, interval):
         df.columns = df.columns.get_level_values(0)
     return df.dropna(subset=["Close"])
 
-et = pytz.timezone("US/Eastern")
-
-def mark_premarket(df):
-    df['Session'] = 'RTH'
-    for idx in df.index:
-        local_time = idx.tz_convert(et).time()
-        if time(4,0) <= local_time < time(9,30):
-            df.at[idx, 'Session'] = 'PREMARKET'
-        elif time(16,0) <= local_time < time(20,0):
-            df.at[idx, 'Session'] = 'AFTERHOURS'
-        else:
-            df.at[idx, 'Session'] = 'RTH'
-    return df
-
 @st.cache_data(ttl=60)
 def load_multi_exchange(symbol, period, interval):
     eu_map = {
@@ -1049,7 +1052,7 @@ if df.empty:
     st.stop()
 
 # 3️⃣ Premarket markieren
-df = mark_premarket(df)
+#df = mark_premarket(df)
 
 # -----------------------
 # VOLUME CLEAN (FIX)
@@ -1385,9 +1388,8 @@ for i in range(start, len(df)):
     prev = df.iloc[i-1]
     curr = df.iloc[i]
     
-   # vwap = get_active_vwap(curr)
-    vwap = df["VWAP_RTH"].iloc[-1]
-    
+    vwap = get_active_vwap(curr)
+
     score_long = 0
 
     weights = {
