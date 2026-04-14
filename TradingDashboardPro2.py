@@ -1092,7 +1092,17 @@ if df.empty:
 # -----------------------
 # VOLUME CLEAN (FIX)
 # -----------------------
-df["Vol_RTH"] = np.where(df["Session"] == "RTH", df["Volume"], np.nan)
+if "Session" not in df.columns:
+    df["Session"] = "RTH"
+
+if "Volume" not in df.columns:
+    continue
+
+df["Vol_RTH"] = np.where(
+    df["Session"].to_numpy() == "RTH",
+    df["Volume"].to_numpy(),
+    np.nan
+)
 df["Vol_Avg_RTH"] = df["Vol_RTH"].rolling(20, min_periods=5).mean()
 
 # Sicherstellen, dass Spalte existiert
