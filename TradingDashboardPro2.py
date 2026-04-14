@@ -440,39 +440,35 @@ st.write("Alerts:", load_alerts_sql())
 st.write("Triggered:", load_triggered_sql())
 
 def mark_premarket(df):
-    import pytz
     from datetime import time
 
-    et = pytz.timezone("US/Eastern")
+    if not isinstance(df, pd.DataFrame):
+        return df
 
-    # 👉 Fallback: Session IMMER setzen
-    df["Session"] = "RTH"
+    if not isinstance(df.index, pd.DatetimeIndex):
+        return df
 
     try:
-        # Index prüfen
-        if not isinstance(df.index, pd.DatetimeIndex):
-            return df
-
-        # Timezone fix
+        # TZ nur wenn nötig
         if df.index.tz is None:
             df.index = df.index.tz_localize("UTC")
-       
+
+        df.index = df.index.tz_convert("US/Eastern")
 
         times = df.index.time
-        session = np.where(
+
+        df["Session"] = np.where(
             (times >= time(4,0)) & (times < time(9,30)),
             "PREMARKET",
-            np.where((times >= time(16,0)) & (times < time(20,0)), "AFTERHOURS", "RTH")
+            np.where(
+                (times >= time(16,0)) & (times < time(20,0)),
+                "AFTERHOURS",
+                "RTH"
+            )
         )
 
-        df["Session"] = session
-
-        df.loc[(times >= time(4,0)) & (times < time(9,30)), "Session"] = "PREMARKET"
-        df.loc[(times >= time(16,0)) & (times < time(20,0)), "Session"] = "AFTERHOURS"
-
-    except Exception as e:
-        # 👉 niemals crashen!
-        pass
+    except Exception:
+        df["Session"] = "RTH"
 
     return df
 
@@ -486,7 +482,7 @@ def scan_market(limit=100):
 
     # --- Download ---
     data_all = download_data(symbols)
-    df.index = df.index.tz_convert(et)
+   
 
     # --- Scan ---
     for s in symbols:
@@ -495,19 +491,12 @@ def scan_market(limit=100):
             continue
 
         try:
-            df["Session"] = "RTH"  # einfacher Fallback (Scanner nutzt keine echten Sessions)
+            df = data_all.get(s)
+
+            if df is None or not isinstance(df, pd.DataFrame) or df.empty:
+                continue
 
             df = mark_premarket(df)
-
-            # 🔥 HARD GUARANTEE
-            if not isinstance(df, pd.DataFrame):
-                continue
-
-            if "Session" not in df.columns:
-                df["Session"] = "RTH"
-
-            if df.empty:
-                continue
 
             if "Session" not in df.columns:
                 df["Session"] = "RTH"
@@ -1090,9 +1079,6 @@ df = df.loc[:, ~df.columns.duplicated()]
 if df.empty:
     st.warning("Keine Daten verfügbar")
     st.stop()
-
-# 3️⃣ Premarket markieren
-#df = mark_premarket(df)
 
 # -----------------------
 # VOLUME CLEAN (FIX)
