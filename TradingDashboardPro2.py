@@ -165,13 +165,17 @@ def compute_atr(df):
     )
     return tr.ewm(span=14, adjust=False).mean()
 
-def get_active_vwap(row):
-    if row["Session"] == "RTH":
-        return row["VWAP_RTH"]
-    elif row["Session"] == "PREMARKET":
-        return row["VWAP_PRE"]
+def get_active_vwap(df):
+    last = df.iloc[-1]
+
+    session = last["Session"]
+
+    if session == "RTH":
+        return last.get("VWAP_RTH", np.nan)
+    elif session == "PREMARKET":
+        return last.get("VWAP_PRE", np.nan)
     else:
-        return row["VWAP_AH"]
+        return last.get("VWAP_AH", np.nan)
 
 @st.cache_data(ttl=300)
 def download_data(symbols):
@@ -207,11 +211,14 @@ def process_symbol(s, data_all):
     df = data_all.get(s)
     if df is None or len(df) < 10:
         return None
+    df.index = pd.to_datetime(df.index)
     
     df = mark_premarket(df)
-        
-    if not isinstance(df.index, pd.DatetimeIndex):
-        raise ValueError("Index must be DatetimeIndex for ORB") 
+    
+    # VWAP RTH (Pflicht!)
+    df["VWAP_RTH"] = (df["Close"] * df["Volume"]).cumsum() / df["Volume"].cumsum().replace(0, np.nan)
+    df["VWAP_PRE"] = df["VWAP_RTH"]
+    df["VWAP_AH"] = df["VWAP_RTH"]    
     
     if df.index.tz is None:
         df.index = df.index.tz_localize("UTC")
@@ -274,7 +281,7 @@ def process_symbol(s, data_all):
     if rel_vol > 1.5:
         score += 1
 
-    vwap = get_active_vwap(df.iloc[-1])
+    vwap = get_active_vwap(df)
 
     rsi = 100 - (100 / (1 + (
         df["Close"].diff().clip(lower=0).ewm(alpha=1/14).mean() /
@@ -608,8 +615,14 @@ def mark_premarket(df):
 def scan_market_core(symbols, data_all):
 
     with ThreadPoolExecutor(max_workers=8) as executor:
-        results = list(executor.map(lambda s: process_symbol(s, data_all), symbols))
-
+        results = []
+        for s in symbols:
+            try:
+                r = process_symbol(s, data_all)
+                if r is not None:
+                    results.append(r)
+            except Exception as e:
+                print(f"ERROR {s}: {e}")
     return [r for r in results if r is not None]
 
 @st.cache_data(ttl=300, max_entries=1)
