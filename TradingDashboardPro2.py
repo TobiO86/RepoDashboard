@@ -570,34 +570,38 @@ st.write("Alerts:", load_alerts_sql())
 st.write("Triggered:", load_triggered_sql())
 
 def mark_premarket(df):
-    from datetime import time
-
     if not isinstance(df, pd.DataFrame):
         return df
 
     if not isinstance(df.index, pd.DatetimeIndex):
-        return df
+        df.index = pd.to_datetime(df.index)
 
-    if isinstance(df.index, pd.DatetimeIndex):
-        try:
-            if df.index.tz is None:
-                df.index = df.index.tz_localize("UTC")
-                df.index = df.index.tz_convert("US/Eastern")
+    try:
+        # -----------------------
+        # TIMEZONE HANDLING SAFE
+        # -----------------------
+        if df.index.tz is None:
+            df.index = df.index.tz_localize("UTC")
 
+        df.index = df.index.tz_convert("US/Eastern")
 
-            times = df.index.time
+        # -----------------------
+        # SESSION LOGIC
+        # -----------------------
+        times = df.index.time
 
-            df["Session"] = np.where(
-                (times >= time(4,0)) & (times < time(9,30)),
-                "PREMARKET",
-                np.where(
-                    (times >= time(16,0)) & (times < time(20,0)),
-                    "AFTERHOURS",
-                    "RTH"
-                )
-            )
-        except Exception:
-            pass
+        df["Session"] = np.select(
+            [
+                (times >= time(4, 0)) & (times < time(9, 30)),
+                (times >= time(16, 0)) & (times < time(20, 0)),
+            ],
+            ["PREMARKET", "AFTERHOURS"],
+            default="RTH"
+        )
+
+    except Exception as e:
+        print("Session error:", e)
+        df["Session"] = "RTH"
 
     return df
 
