@@ -362,8 +362,6 @@ def process_symbol(s, data_all):
     }
 
 
-
-e
 def calculate_sl_tp(df, i, setup, rr_target=2):
     price = df["Close"].iloc[i]
     atr = df["ATR"].iloc[i]
