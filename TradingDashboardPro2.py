@@ -1386,7 +1386,7 @@ for i in range(start, len(df)):
     curr = df.iloc[i]
     
    # vwap = get_active_vwap(curr)
-   vwap = df["VWAP_RTH"].iloc[-1]
+    vwap = df["VWAP_RTH"].iloc[-1]
     
     score_long = 0
 
