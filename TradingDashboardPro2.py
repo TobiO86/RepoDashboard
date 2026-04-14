@@ -14,7 +14,7 @@ import json
 import sqlite3
 
 DB_FILE = "alerts.db"
-
+st.cache_data.clear()
 def get_conn():
     return sqlite3.connect(DB_FILE, check_same_thread=False)
 
