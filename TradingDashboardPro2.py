@@ -1095,9 +1095,6 @@ if df.empty:
 if "Session" not in df.columns:
     df["Session"] = "RTH"
 
-if "Volume" not in df.columns:
-    continue
-
 df["Vol_RTH"] = np.where(
     df["Session"].to_numpy() == "RTH",
     df["Volume"].to_numpy(),
