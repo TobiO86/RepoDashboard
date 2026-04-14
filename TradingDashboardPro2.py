@@ -170,9 +170,8 @@ def get_active_vwap(row):
         return row["VWAP_RTH"]
     elif row["Session"] == "PREMARKET":
         return row["VWAP_PRE"]
-    elif row["Session"] == "AFTERHOURS":
+    else:
         return row["VWAP_AH"]
-    return row["Close"]
 
 @st.cache_data(ttl=300)
 def download_data(symbols):
@@ -1122,20 +1121,6 @@ vwap_dev = (typical_price - df["VWAP_RTH"]).rolling(20).std()
 df["VWAP_upper2"] = df["VWAP_RTH"] + 2*vwap_dev
 df["VWAP_lower2"] = df["VWAP_RTH"] - 2*vwap_dev
 
-up_move = df["High"].diff()
-down_move = -df["Low"].diff()
-
-df["+DM"] = np.where((up_move > down_move) & (up_move > 0), up_move, 0)
-df["-DM"] = np.where((down_move > up_move) & (down_move > 0), down_move, 0)
-
-plus_dm = df["+DM"].ewm(span=14, adjust=False).mean()
-minus_dm = df["-DM"].ewm(span=14, adjust=False).mean()
-
-df["+DI"] = 100 * (plus_dm / df["ATR"])
-df["-DI"] = 100 * (minus_dm / df["ATR"])
-
-dx = (np.abs(df["+DI"] - df["-DI"]) / (df["+DI"] + df["-DI"])) * 100
-df["ADX"] = dx.ewm(span=14, adjust=False).mean()
 
 df["Trend_Strong"] = df["ADX"] > 25
 df["Trend_Long"] = df["+DI"] > df["-DI"]
@@ -1314,7 +1299,8 @@ df["ShortSignal"] = False
 
 df["LongScore"] = df["LongScore"].astype(float)
 df["ShortScore"] = df["ShortScore"].astype(float)
- 
+df["MarketRegime"] = detect_market_regime(df)
+
 for i in range(start, len(df)):
     prev = df.iloc[i-1]
     curr = df.iloc[i]
@@ -1406,7 +1392,7 @@ for i in range(start, len(df)):
     if df["SellNewsShort"].iloc[i]:
         score_short += weights["sellnews"]
 
-    regime = detect_market_regime(df)
+    regime = df["MarketRegime"].iloc[i]
 
     # Mean Reversion Boost
     if regime == "RANGE":
@@ -1541,7 +1527,7 @@ def calculate_sl_tp(df, i, rr_target=2):
                 risk = price - sl 
                 risk = max(min_risk, min(risk, max_risk)) 
                 tp = price + risk * rr_target 
-            return sl, tp 
+        return sl, tp 
 
     elif df["ShortSignal"].iloc[i]: 
         swing_high = df["High"].iloc[max(0, i-10):i].max()
@@ -1555,7 +1541,7 @@ def calculate_sl_tp(df, i, rr_target=2):
                 risk = sl - price 
                 risk = max(min_risk, min(risk, max_risk)) 
                 tp = price - risk * rr_target 
-            return sl, tp 
+        return sl, tp 
     return np.nan, np.nan
 
 
@@ -1593,7 +1579,9 @@ for i in range(1, len(df)):
         prev_sl = df["SL"].iloc[i-1]
         new_sl = price + atr * 1.2
         df.at[df.index[i], "SL"] = min(prev_sl, new_sl)
- 
+
+if not isinstance(df.index, pd.DatetimeIndex):
+    raise ValueError("Index must be DatetimeIndex for ORB") 
 df["Date"] = df.index.date
 
 orb_highs = []
