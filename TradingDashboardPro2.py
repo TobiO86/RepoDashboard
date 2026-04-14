@@ -396,10 +396,17 @@ def check_alerts():
 
         try:
             data = yf.download(ticker, period="5d", interval="5m")
+
             if data.empty:
                 continue
 
-            price = float(data["Close"].iloc[-1])
+            close = data["Close"]
+
+            if isinstance(close, pd.DataFrame):
+                close = close.iloc[:, 0]
+
+            price = float(close.dropna().iloc[-1])
+
         except Exception as e:
             st.write(f"Fehler bei {ticker}: {e}")
             continue
