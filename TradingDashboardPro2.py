@@ -49,7 +49,7 @@ init_db()
 # AUTO REFRESH (NUR TOP DATEN)
 # -----------------------
 def get_market_session():
-    et = pytz.timezone("US/Eastern")
+    et = pytz.timezone("America/New_York")
     now = datetime.now(et)
 
     weekday = now.weekday()
@@ -207,16 +207,16 @@ def process_symbol(s, data_all):
     df = data_all.get(s)
     if df is None or len(df) < 10:
         return None
-
+    
     df = mark_premarket(df)
-
+        
     if not isinstance(df.index, pd.DatetimeIndex):
-        return None
-
+        raise ValueError("Index must be DatetimeIndex for ORB") 
+    
     if df.index.tz is None:
         df.index = df.index.tz_localize("UTC")
 
-    df.index = df.index.tz_convert("US/Eastern")
+    df.index = df.index.tz_convert("America/New_York")
 
     if "Session" not in df.columns:
         df["Session"] = "RTH"
@@ -583,7 +583,7 @@ def mark_premarket(df):
         if df.index.tz is None:
             df.index = df.index.tz_localize("UTC")
 
-        df.index = df.index.tz_convert("US/Eastern")
+        df.index = df.index.tz_convert("America/New_York")
 
         # -----------------------
         # SESSION LOGIC
@@ -946,8 +946,7 @@ def load_multi_exchange(symbol, period, interval):
         if df_eu.index.tz is None:
             df_eu.index = df_eu.index.tz_localize("UTC")
 
-        df_us.index = df_us.index.tz_convert("US/Eastern")
-        df_eu.index = df_eu.index.tz_convert("US/Eastern")
+        df_us.index = df_us.index.tz_convert("America/New_York")
     except Exception as e:
         print("TZ Error:", e)
 
@@ -1584,8 +1583,6 @@ for i in range(1, len(df)):
         new_sl = price + atr * 1.2
         df.at[df.index[i], "SL"] = min(prev_sl, new_sl)
 
-if not isinstance(df.index, pd.DatetimeIndex):
-    raise ValueError("Index must be DatetimeIndex for ORB") 
 df["Date"] = df.index.date
 
 orb_highs = []
