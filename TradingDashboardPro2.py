@@ -519,7 +519,8 @@ def scan_market(limit=100):
             df["Trend_Long"] = df["+DI"] > df["-DI"]
             df["Trend_Short"] = df["-DI"] > df["+DI"]
             
-            
+            if avg_vol is None or avg_vol == 0 or np.isnan(avg_vol):
+                continue
             # --- Relative Volume ---
             rel_vol = df["Volume"].iloc[-1] / avg_vol
 
@@ -616,13 +617,31 @@ def scan_market(limit=100):
 
             setup = None
 
-            if total_score >= 4:
+            if total_score >= 2:
                 setup = "LONG" if long_score > short_score else "SHORT"
             else:
                 continue
 
             delta_score = long_score - short_score
             score = total_score
+
+            i = len(df) - 1
+            sl, tp = calculate_sl_tp(df, i, setup, rr_target=2)
+
+            if np.isnan(sl) or np.isnan(tp):
+                continue
+            
+            risk = abs(price - sl)
+            reward = abs(tp - price)
+
+            if risk == 0:
+                continue
+
+            rr = reward / risk
+
+            # 🔹 QUALITY FILTER
+            if rr < 1.1:
+                continue
 
             if setup:
                 results.append({
@@ -634,28 +653,7 @@ def scan_market(limit=100):
                     "sl": sl,
                     "tp": tp,
                 })
-            
-            i = len(df) - 1
-            sl, tp = calculate_sl_tp(df, i, setup, rr_target=2)
-
-            if np.isnan(sl) or np.isnan(tp):
-                continue
-
-            risk = abs(price - sl)
-            reward = abs(tp - price)
-
-            if risk == 0:
-                continue
-
-            rr = reward / risk
-
-            # 🔹 QUALITY FILTER
-            if rr < 1.5:
-                continue
-
-            if score < 4:
-                continue
-
+                
             signal = {
                 "symbol": s,
                 "type": setup,
@@ -691,7 +689,8 @@ def scan_market(limit=100):
 
                 st.session_state.sent_signals.add(signal_id)
 
-        except:
+        except Exception as e:
+            st.write(f"Fehler bei {s}: {e}")
             continue
 
     df_res = pd.DataFrame(results)
@@ -1386,7 +1385,8 @@ for i in range(start, len(df)):
     prev = df.iloc[i-1]
     curr = df.iloc[i]
     
-    vwap = get_active_vwap(curr)
+   # vwap = get_active_vwap(curr)
+   vwap = df["VWAP_RTH"].iloc[-1]
     
     score_long = 0
 
