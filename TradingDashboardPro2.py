@@ -719,7 +719,7 @@ def scan_market(limit=100):
 
             signal_id = f"{signal['symbol']}_{signal['type']}_{round(signal['price'],1)}"
 
-            if signal_id not in st.session_state.sent_signals:
+            if signal_id not in st.session_state.sent_signals and total_score >= 5:
 
                 message = (
                     f"🚨 {signal['symbol']} {signal['type']}\n\n"
