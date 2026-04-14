@@ -448,27 +448,26 @@ def mark_premarket(df):
     if not isinstance(df.index, pd.DatetimeIndex):
         return df
 
-    try:
-        # TZ nur wenn nötig
-        if df.index.tz is None:
-            df.index = df.index.tz_localize("UTC")
+    if isinstance(df.index, pd.DatetimeIndex):
+        try:
+            if df.index.tz is None:
+                df.index = df.index.tz_localize("UTC")
+            df.index = df.index.tz_convert("US/Eastern")
 
-        df.index = df.index.tz_convert("US/Eastern")
 
-        times = df.index.time
+            times = df.index.time
 
-        df["Session"] = np.where(
-            (times >= time(4,0)) & (times < time(9,30)),
-            "PREMARKET",
-            np.where(
-                (times >= time(16,0)) & (times < time(20,0)),
-                "AFTERHOURS",
-                "RTH"
+            df["Session"] = np.where(
+                (times >= time(4,0)) & (times < time(9,30)),
+                "PREMARKET",
+                np.where(
+                    (times >= time(16,0)) & (times < time(20,0)),
+                    "AFTERHOURS",
+                    "RTH"
+                )
             )
-        )
-
-    except Exception:
-        df["Session"] = "RTH"
+        except Exception:
+            pass
 
     return df
 
