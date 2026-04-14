@@ -445,19 +445,27 @@ def mark_premarket(df):
 
     et = pytz.timezone("US/Eastern")
 
+    # 👉 Fallback: Session IMMER setzen
+    df["Session"] = "RTH"
+
     try:
+        # Index prüfen
+        if not isinstance(df.index, pd.DatetimeIndex):
+            return df
+
+        # Timezone fix
         if df.index.tz is None:
             df.index = df.index.tz_localize("UTC")
         df.index = df.index.tz_convert(et)
+
+        times = df.index.time
+
+        df.loc[(times >= time(4,0)) & (times < time(9,30)), "Session"] = "PREMARKET"
+        df.loc[(times >= time(16,0)) & (times < time(20,0)), "Session"] = "AFTERHOURS"
+
     except Exception as e:
-        return df  # 👉 fallback ohne crash
-
-    df["Session"] = "RTH"
-
-    times = df.index.time
-
-    df.loc[(times >= time(4,0)) & (times < time(9,30)), "Session"] = "PREMARKET"
-    df.loc[(times >= time(16,0)) & (times < time(20,0)), "Session"] = "AFTERHOURS"
+        # 👉 niemals crashen!
+        pass
 
     return df
 
@@ -639,7 +647,7 @@ def scan_market(limit=100):
 
             setup = None
 
-            if total_score >= 2:
+            if total_score >= 3:
                 setup = "LONG" if long_score > short_score else "SHORT"
             else:
                 continue
@@ -662,7 +670,7 @@ def scan_market(limit=100):
             rr = reward / risk
 
             # 🔹 QUALITY FILTER
-            if rr < 1.1:
+            if rr < 1.2:
                 continue
 
             if setup:
