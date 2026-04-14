@@ -345,6 +345,9 @@ def process_symbol(s, data_all):
     if np.isnan(sl) or np.isnan(tp):
         return None
 
+    if np.isnan(sl) or np.isnan(tp):
+        return None
+
     rr = abs(tp - price) / abs(price - sl)
 
     signal_ok = rr >= 1.5
@@ -1683,7 +1686,7 @@ def get_entry_signal(df, i, bias):
     tp = df["TP"].iloc[i]
 
     if np.isnan(sl) or np.isnan(tp):
-        return None
+        return np.nan, np.nan
 
     rr = abs((tp - price) / (price - sl)) if price != sl else 0
 
