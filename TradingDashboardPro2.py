@@ -206,6 +206,34 @@ def download_data(symbols):
 
     return data_all
 
+def add_indicators(df):
+
+    # ATR
+    df["ATR"] = compute_atr(df)
+
+    # DMI / ADX
+    up_move = df["High"].diff()
+    down_move = -df["Low"].diff()
+
+    df["+DM"] = np.where((up_move > down_move) & (up_move > 0), up_move, 0)
+    df["-DM"] = np.where((down_move > up_move) & (down_move > 0), down_move, 0)
+
+    plus_dm = df["+DM"].ewm(span=14).mean()
+    minus_dm = df["-DM"].ewm(span=14).mean()
+
+    df["+DI"] = 100 * (plus_dm / df["ATR"])
+    df["-DI"] = 100 * (minus_dm / df["ATR"])
+
+    dx = np.abs(df["+DI"] - df["-DI"]) / (df["+DI"] + df["-DI"])
+    df["ADX"] = dx.ewm(span=14).mean()
+
+    # VWAP (RTH simpel)
+    df["cum_pv"] = (df["Close"] * df["Volume"]).cumsum()
+    df["cum_vol"] = df["Volume"].cumsum()
+    df["VWAP_RTH"] = df["cum_pv"] / df["cum_vol"].replace(0, np.nan)
+
+    return df
+
 def process_symbol(s, data_all):
 
     df = data_all.get(s)   # ✅ HIER bleiben!
@@ -218,6 +246,7 @@ def process_symbol(s, data_all):
     df.index = pd.to_datetime(df.index)
 
     df = mark_premarket(df)
+    df = add_indicators(df)
     
     # VWAP RTH (Pflicht!)
     df["VWAP_RTH"] = (df["Close"] * df["Volume"]).cumsum() / df["Volume"].cumsum().replace(0, np.nan)
@@ -251,7 +280,6 @@ def process_symbol(s, data_all):
     if dollar_vol > 20_000_000:
         score += 1
 
-    df["ATR"] = compute_atr(df)
     atr = df["ATR"].iloc[-1]
     atr_pct = atr / price
 
@@ -263,29 +291,12 @@ def process_symbol(s, data_all):
     ema20 = df["Close"].ewm(span=20).mean()
     ema50 = df["Close"].ewm(span=50).mean()
 
-    up_move = df["High"].diff()
-    down_move = -df["Low"].diff()
-
-    df["+DM"] = np.where((up_move > down_move) & (up_move > 0), up_move, 0)
-    df["-DM"] = np.where((down_move > up_move) & (down_move > 0), down_move, 0)
-
-    plus_dm = df["+DM"].ewm(span=14).mean()
-    minus_dm = df["-DM"].ewm(span=14).mean()
-
-    df["+DI"] = 100 * (plus_dm / df["ATR"])
-    df["-DI"] = 100 * (minus_dm / df["ATR"])
-
-    dx = np.abs(df["+DI"] - df["-DI"]) / (df["+DI"] + df["-DI"])
-    df["ADX"] = dx.ewm(span=14).mean()
-
     rel_vol = df["Volume"].iloc[-1] / avg_vol
 
     if rel_vol > 1.2:
         score += 1
     if rel_vol > 1.5:
         score += 1
-
-    vwap = get_active_vwap(df)
 
     rsi = 100 - (100 / (1 + (
         df["Close"].diff().clip(lower=0).ewm(alpha=1/14).mean() /
@@ -1146,8 +1157,14 @@ if "ADX" in df.columns:
     df["Trend_Strong"] = df["ADX"] > 25
 else:
     df["Trend_Strong"] = False
-df["Trend_Long"] = df["+DI"] > df["-DI"]
-df["Trend_Short"] = df["-DI"] > df["+DI"]
+if "+DI" in df.columns and "-DI" in df.columns:
+    df["Trend_Long"] = df["+DI"] > df["-DI"]
+else:
+    df["Trend_Long"] = False
+if "+DI" in df.columns and "-DI" in df.columns:
+    df["Trend_Short"] = df["+-DI"] > df["DI"]
+else:
+    df["Trend_Short"] = False    
 
 # echtes Volumen
 df["Vol_Current"] = df["Volume"]
