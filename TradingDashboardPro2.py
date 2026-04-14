@@ -716,37 +716,41 @@ def mark_premarket(df):
 
     return df
 
-@st.cache_data(ttl=360)
-def scan_market(limit=100):
-    symbols = filter_symbols_by_session(get_sp500_symbols(), SESSION)[:limit]
-    results = []
-
-    data_all = {}
-    chunks = np.array_split(symbols, 3)
-
-    # --- Download ---
-    data_all = download_data(symbols)
-   
+def scan_market_core(symbols, data_all):
     with ThreadPoolExecutor(max_workers=8) as executor:
         results = list(executor.map(
             lambda s: process_symbol(s, data_all),
             symbols
         ))
 
-    results = [r for r in results if r is not None]
+    return [r for r in results if r is not None]
+
+@st.cache_data(ttl=360)
+def scan_market(limit=100):
+
+    symbols = filter_symbols_by_session(get_sp500_symbols(), SESSION)[:limit]
+
+    data_all = download_data(symbols)
+
+    results = scan_market_core(symbols, data_all)
+
+    # 🔥 SAFETY CHECK
+    if not results:
+        return [], []
 
     df_res = pd.DataFrame(results)
 
-    gainers = df_res[df_res['setup']=="LONG"].sort_values("score", ascending=False)
-    losers  = df_res[df_res['setup']=="SHORT"].sort_values("score", ascending=False)
+    if df_res.empty or "setup" not in df_res.columns:
+        return [], []
 
-    # --- Immer 10 zurückgeben ---
+    gainers = df_res[df_res["setup"] == "LONG"].sort_values("score", ascending=False)
+    losers  = df_res[df_res["setup"] == "SHORT"].sort_values("score", ascending=False)
+
     def pad(df_list):
         lst = df_list.to_dict("records")
-        return lst + [{}]*(10-len(lst)) if len(lst)<10 else lst[:10]
+        return lst + [{}] * (10 - len(lst)) if len(lst) < 10 else lst[:10]
 
     return pad(gainers), pad(losers)
-
 
 # -----------------------
 # UI
