@@ -491,8 +491,23 @@ def scan_market(limit=100):
             df["Session"] = "RTH"  # einfacher Fallback (Scanner nutzt keine echten Sessions)
 
             df = mark_premarket(df)
+            
+            df = mark_premarket(df)
 
-            df["Vol_RTH"] = np.where(df["Session"] == "RTH", df["Volume"], np.nan)
+            # 🔥 HARD GUARANTEE
+            if not isinstance(df, pd.DataFrame):
+                continue
+
+            if "Session" not in df.columns:
+                df["Session"] = "RTH"
+
+            if df.empty:
+                continue
+
+            session = df["Session"].values
+            volume = df["Volume"].values
+
+            df["Vol_RTH"] = np.where(session == "RTH", volume, np.nan)
             df["Vol_Avg_RTH"] = df["Vol_RTH"].rolling(20, min_periods=5).mean()
             df["VWAP_RTH"] = (df["Close"] * df["Volume"]).groupby(df.index.date).cumsum() / df["Volume"].groupby(df.index.date).cumsum()
             ema20 = df["Close"].ewm(span=20).mean()
@@ -647,7 +662,7 @@ def scan_market(limit=100):
 
             setup = None
 
-            if total_score >= 3:
+            if total_score >= 5:
                 setup = "LONG" if long_score > short_score else "SHORT"
             else:
                 continue
@@ -670,7 +685,7 @@ def scan_market(limit=100):
             rr = reward / risk
 
             # 🔹 QUALITY FILTER
-            if rr < 1.2:
+            if rr < 1.3:
                 continue
 
             if setup:
