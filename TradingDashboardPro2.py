@@ -420,7 +420,7 @@ def get_sp500_symbols():
         "BTC-USD","ETH-USD","SOL-USD","XRP_USD","ADA_USD","DOGE"
     ]
 
-
+st.sidebar.write("TOP Erreicht")
 def filter_symbols_by_session(symbols, session):
     if session == "RTH":
         symbols = symbols[:100]
@@ -432,7 +432,7 @@ def filter_symbols_by_session(symbols, session):
 
     return symbols
 
-
+st.sidebar.write("TOP Erreicht")
 @st.cache_data(ttl=300)
 def download_data(symbols):
     data_all = {}
@@ -464,7 +464,7 @@ def download_data(symbols):
             data_all[symbols[0]] = d
 
     return data_all
-
+st.sidebar.write("TOP Erreicht")
 def mark_premarket(df):
     if not isinstance(df, pd.DataFrame):
         return df
@@ -495,7 +495,7 @@ def mark_premarket(df):
         print("Session Error:", e)
 
     return df
-
+st.sidebar.write("TOP Erreicht")
 # ATR
 def compute_atr(df):
     tr = np.maximum(
@@ -506,7 +506,7 @@ def compute_atr(df):
         )
     )
     return tr.ewm(span=14, adjust=False).mean()
-
+st.sidebar.write("TOP Erreicht")
 def process_symbol(s, data_all):
     df_s = data_all.get(s)
 
@@ -670,7 +670,7 @@ def process_symbol(s, data_all):
         "signal_ok": signal_ok
     }
 
-
+st.sidebar.write("TOP Erreicht")
 def scan_market_core(symbols, data_all):
     results = []
     for s in symbols:
@@ -682,7 +682,7 @@ def scan_market_core(symbols, data_all):
             print(f"ERROR {s}: {e}")
     return results
 
-st.sidebar.write("VOR SCANNER")
+st.sidebar.write("TOP Erreicht")
 @st.cache_data(ttl=300, max_entries=1)
 def scan_market(limit=100):
     symbols = filter_symbols_by_session(get_sp500_symbols(), SESSION)[:limit]
