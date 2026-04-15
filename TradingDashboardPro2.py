@@ -46,6 +46,26 @@ def init_db():
 # Beim Start einmal ausführen
 init_db()
 
+def get_market_session():
+    et = pytz.timezone("America/New_York")
+    now = datetime.now(et)
+
+    weekday = now.weekday()
+    current_time = now.time()
+
+    if weekday >= 5:
+        return "WEEKEND"
+
+    if time(4, 0) <= current_time < time(9, 30):
+        return "PREMARKET"
+    elif time(9, 30) <= current_time < time(16, 0):
+        return "RTH"
+    elif time(16, 0) <= current_time < time(20, 0):
+        return "AFTERHOURS"
+    else:
+        return "CLOSED"
+
+SESSION = get_market_session()
 # =========================================================
 # 🔹 DEFAULT INPUTS
 # =========================================================
@@ -376,6 +396,372 @@ if st.sidebar.button("💾 Alarme speichern"):
         }
         save_alerts_sql(alerts)
         st.sidebar.success("Gespeichert!")    
+
+# =========================================================
+# 🔹 MARKET SCANNER
+# =========================================================
+
+@st.cache_data(ttl=86400)
+def get_sp500_symbols():
+    return [
+        "AAPL","MSFT","NVDA","AMZN","META","GOOGL","TSLA",
+        "AVGO","TSM","AMD","NFLX","INTC","ADBE","CRM","LITE",
+        "COIN","PLTR","RIVN","SOFI","SNAP","ROKU",
+        "UPST","AFRM","DKNG","SHOP","SQ","PYPL",
+        "SMCI","ARM","MU","ASML","LRCX","KLAC","MRVL",
+        "JPM","GS","BAC","MS","SCHW",
+        "XOM","CVX","OXY","SLB","HAL","ENR.DE",
+        "LLY","UNH","JNJ","MRNA","BNTX",
+        "CAT","BA","GE","DE","NOC",
+        "SPY","QQQ","IWM","DIA","XLF","XLK","XLE",
+        "^GSPC","^NDX","^DJI",
+        "VIXY","UVXY",
+        "BTC-USD","ETH-USD","SOL-USD","XRP_USD","ADA_USD","DOGE"
+    ]
+
+
+def filter_symbols_by_session(symbols, session):
+    if session == "RTH":
+        symbols = symbols[:100]
+    else:
+        symbols = symbols[:30]
+
+    if session == "WEEKEND":
+        return [s for s in symbols if "=F" in s or "USD" in s]
+
+    return symbols
+
+
+@st.cache_data(ttl=300)
+def download_data(symbols):
+    data_all = {}
+
+    try:
+        d = yf.download(
+            tickers=" ".join(symbols),
+            period="5d",
+            interval="5m",
+            group_by="ticker",
+            threads=False,
+            progress=False
+        )
+    except Exception:
+        return data_all
+
+    if isinstance(d.columns, pd.MultiIndex):
+        for ticker in symbols:
+            if ticker in d.columns.get_level_values(0):
+                df_t = d[ticker].copy()
+                if isinstance(df_t.columns, pd.MultiIndex):
+                    df_t.columns = df_t.columns.get_level_values(0)
+                df_t = df_t.dropna(subset=["Close"])
+                if not df_t.empty:
+                    data_all[ticker] = df_t
+    else:
+        d = d.dropna(subset=["Close"]) if "Close" in d.columns else d.dropna()
+        if not d.empty and len(symbols) > 0:
+            data_all[symbols[0]] = d
+
+    return data_all
+
+def mark_premarket(df):
+    if not isinstance(df, pd.DataFrame):
+        return df
+
+    if not isinstance(df.index, pd.DatetimeIndex):
+        return df
+
+    try:
+        # 🔹 Zeitzone sicherstellen
+        if df.index.tz is None:
+            df.index = df.index.tz_localize("UTC")
+
+        df.index = df.index.tz_convert("America/New_York")
+
+        times = df.index.time
+
+        df["Session"] = np.where(
+            (times >= time(4, 0)) & (times < time(9, 30)),
+            "PREMARKET",
+            np.where(
+                (times >= time(16, 0)) & (times < time(20, 0)),
+                "AFTERHOURS",
+                "RTH"
+            )
+        )
+
+    except Exception as e:
+        print("Session Error:", e)
+
+    return df
+
+def process_symbol(s, data_all):
+    df_s = data_all.get(s)
+
+    if df_s is None or len(df_s) < 10:
+        return None
+
+    df_s = df_s.copy()
+
+    if not isinstance(df_s.index, pd.DatetimeIndex):
+        df_s.index = pd.to_datetime(df_s.index, errors="coerce")
+
+    df_s = df_s.dropna()
+    if df_s.empty:
+        return None
+
+    df_s = mark_premarket(df_s)
+
+    if "Session" not in df_s.columns:
+        df_s["Session"] = "RTH"
+
+    # Core indicators
+    df_s["ATR"] = compute_atr(df_s)
+
+    up_move = df_s["High"].diff()
+    down_move = -df_s["Low"].diff()
+
+    df_s["+DM"] = np.where((up_move > down_move) & (up_move > 0), up_move, 0)
+    df_s["-DM"] = np.where((down_move > up_move) & (down_move > 0), down_move, 0)
+
+    plus_dm = df_s["+DM"].ewm(span=14, adjust=False).mean()
+    minus_dm = df_s["-DM"].ewm(span=14, adjust=False).mean()
+
+    df_s["+DI"] = 100 * (plus_dm / df_s["ATR"])
+    df_s["-DI"] = 100 * (minus_dm / df_s["ATR"])
+
+    dx = (np.abs(df_s["+DI"] - df_s["-DI"]) / (df_s["+DI"] + df_s["-DI"])) * 100
+    df_s["ADX"] = dx.ewm(span=14, adjust=False).mean().fillna(0)
+
+    # VWAP
+    tp = (df_s["High"] + df_s["Low"] + df_s["Close"]) / 3
+    df_s["Vol_RTH"] = np.where(df_s["Session"] == "RTH", df_s["Volume"], np.nan)
+    df_s["Vol_Avg_RTH"] = pd.Series(df_s["Vol_RTH"], index=df_s.index).rolling(20, min_periods=5).mean()
+
+    vol_rth = np.where(df_s["Session"] == "RTH", df_s["Volume"], 0)
+    pv_rth = tp * vol_rth
+    df_s["VWAP_RTH"] = (
+        pd.Series(pv_rth, index=df_s.index).groupby(df_s.index.date).cumsum() /
+        pd.Series(vol_rth, index=df_s.index).groupby(df_s.index.date).cumsum().replace(0, np.nan)
+    )
+
+    df_s["VWAP_PRE"] = df_s["VWAP_RTH"]
+    df_s["VWAP_AH"] = df_s["VWAP_RTH"]
+
+    price = df_s["Close"].iloc[-1]
+    avg_vol = df_s["Vol_Avg_RTH"].iloc[-1]
+
+    if pd.isna(avg_vol) or avg_vol == 0:
+        return None
+
+    dollar_vol = price * avg_vol
+
+    score = 0
+    if dollar_vol > 5_000_000:
+        score += 1
+    if dollar_vol > 20_000_000:
+        score += 1
+
+    atr = df_s["ATR"].iloc[-1]
+    atr_pct = atr / price if price != 0 else np.nan
+
+    if pd.notna(atr_pct) and atr_pct > 0.003:
+        score += 1
+    if pd.notna(atr_pct) and atr_pct > 0.01:
+        score += 1
+
+    rel_vol = df_s["Volume"].iloc[-1] / avg_vol
+    if rel_vol > 1.2:
+        score += 1
+    if rel_vol > 1.5:
+        score += 1
+
+    ema20 = df_s["Close"].ewm(span=20).mean()
+    ema50 = df_s["Close"].ewm(span=50).mean()
+
+    rsi = 100 - (100 / (1 + (
+        df_s["Close"].diff().clip(lower=0).ewm(alpha=1/14).mean() /
+        (-df_s["Close"].diff().clip(upper=0).ewm(alpha=1/14).mean().replace(0, 1e-10))
+    ))).iloc[-1]
+
+    vwap = df_s["VWAP_RTH"].iloc[-1]
+
+    long_score = 0
+    short_score = 0
+
+    if price > vwap:
+        long_score += 1
+    else:
+        short_score += 1
+
+    if ema20.iloc[-1] > ema50.iloc[-1]:
+        long_score += 1
+    else:
+        short_score += 1
+
+    if rsi > 55:
+        long_score += 1
+    elif rsi < 45:
+        short_score += 1
+
+    total_score = max(long_score, short_score) + score
+    if total_score < 7:
+        return None
+
+    setup = "LONG" if long_score > short_score else "SHORT"
+
+    # Scanner-SLTP-Version
+    price_i = df_s["Close"].iloc[-1]
+    atr_i = df_s["ATR"].iloc[-1]
+    vwap_i = df_s["VWAP_RTH"].iloc[-1]
+
+    if pd.isna(price_i) or pd.isna(atr_i) or pd.isna(vwap_i):
+        return None
+
+    min_risk = atr_i * 0.5
+    max_risk = atr_i * 3
+
+    if setup == "LONG":
+        swing_low = df_s["Low"].iloc[max(0, len(df_s)-11):len(df_s)-1].min()
+        if pd.isna(swing_low):
+            swing_low = price_i - atr_i
+        sl = min(swing_low, vwap_i - atr_i * 0.5)
+        if sl >= price_i:
+            sl = price_i - min_risk
+        risk = max(min_risk, min(price_i - sl, max_risk))
+        tp = price_i + risk * 2
+    else:
+        swing_high = df_s["High"].iloc[max(0, len(df_s)-11):len(df_s)-1].max()
+        if pd.isna(swing_high):
+            swing_high = price_i + atr_i
+        sl = max(swing_high, vwap_i + atr_i * 0.5)
+        if sl <= price_i:
+            sl = price_i + min_risk
+        risk = max(min_risk, min(sl - price_i, max_risk))
+        tp = price_i - risk * 2
+
+    if pd.isna(sl) or pd.isna(tp) or price_i == sl:
+        return None
+
+    rr = abs(tp - price_i) / abs(price_i - sl)
+    signal_ok = rr >= 1.5
+
+    return {
+        "symbol": s,
+        "setup": setup,
+        "price": price_i,
+        "sl": sl,
+        "tp": tp,
+        "rr": rr,
+        "score": total_score,
+        "delta": long_score - short_score,
+        "signal_ok": signal_ok
+    }
+
+
+def scan_market_core(symbols, data_all):
+    results = []
+    for s in symbols:
+        try:
+            r = process_symbol(s, data_all)
+            if r is not None:
+                results.append(r)
+        except Exception as e:
+            print(f"ERROR {s}: {e}")
+    return results
+
+
+@st.cache_data(ttl=300, max_entries=1)
+def scan_market(limit=100):
+    symbols = filter_symbols_by_session(get_sp500_symbols(), SESSION)[:limit]
+    data_all = download_data(symbols)
+    results = scan_market_core(symbols, data_all)
+
+    gainers = [r for r in results if r["setup"] == "LONG"]
+    losers = [r for r in results if r["setup"] == "SHORT"]
+
+    gainers = sorted(gainers, key=lambda x: x["score"], reverse=True)
+    losers = sorted(losers, key=lambda x: x["score"], reverse=True)
+
+    for r in results:
+        if not r["signal_ok"]:
+            continue
+
+        signal_id = f"{r['symbol']}_{r['setup']}_{round(r['price'],1)}"
+
+        if "sent_signals" not in st.session_state:
+            st.session_state.sent_signals = set()
+
+        if signal_id not in st.session_state.sent_signals:
+            send_telegram(
+                f"🚨 {r['symbol']} {r['setup']}\n\n"
+                f"Entry: {r['price']:.2f}\n"
+                f"SL: {r['sl']:.2f}\n"
+                f"TP: {r['tp']:.2f}\n"
+                f"RR: {r['rr']:.2f}\n\n"
+                f"Score: {r['score']} | Δ {r['delta']}"
+            )
+            st.session_state.sent_signals.add(signal_id)
+
+    def pad(x):
+        return x[:10] + [{}] * max(0, 10 - len(x))
+
+    return pad(gainers), pad(losers)
+
+
+def render_list(title, stocks):
+    st.sidebar.write(f"**{title}**")
+
+    if not stocks:
+        st.sidebar.caption("Keine Daten")
+        return
+
+    for i, s in enumerate(stocks):
+        if not isinstance(s, dict):
+            continue
+
+        ticker = s.get("symbol")
+        setup = s.get("setup", "-")
+        score = s.get("score", "-")
+        delta = s.get("delta", "-")
+
+        if not ticker:
+            continue
+
+        label = f"{ticker} | {setup} | ⭐{score} Δ{delta}"
+
+        if st.sidebar.button(label, key=f"{title}_{i}_{ticker}"):
+            st.session_state.symbol = ticker
+
+# =========================================================
+# 🔹 SCANNER SIDEBAR UI
+# =========================================================
+
+st.sidebar.subheader("🔥 Scanner PRO MAX")
+
+with st.sidebar.expander("🔥 Scanner PRO MAX", expanded=False):
+    limit = st.slider(
+        "Universe Size",
+        50, 500, 100,
+        step=50,
+        key="scanner_limit"
+    )
+
+live_mode = st.sidebar.checkbox("⚡ Live Mode (RTH only)", True)
+show_rth_only_vwap = st.sidebar.checkbox("VWAP nur RTH", True)
+color_sessions = st.sidebar.checkbox("Sessions farbig", True)
+
+if live_mode:
+    if SESSION == "WEEKEND":
+        st.caption("Weekend Mode: nur Crypto + Futures")
+    elif SESSION != "RTH":
+        st.caption(f"Off-hours: {SESSION}")
+
+gainers, losers = scan_market(limit)
+
+render_list("Top Momentum ↑", gainers)
+render_list("Top Breakdown ↓", losers)
+
     
 @st.cache_data(ttl=120)
 def load_multi_exchange(symbol, period, interval):
