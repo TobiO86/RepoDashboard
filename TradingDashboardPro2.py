@@ -305,7 +305,11 @@ def check_alerts():
 
     save_triggered_sql(triggered)
     
-check_alerts()    
+@st.cache_data(ttl=60)
+def run_alerts():
+    check_alerts()
+
+run_alerts()
     
 # =========================================================
 # 🔹 SIDEBAR INPUTS
@@ -447,7 +451,7 @@ def download_data(symbols):
             period="5d",
             interval="5m",
             group_by="ticker",
-            threads=False,
+            threads=True,
             progress=False
         )
     except Exception:
@@ -468,10 +472,6 @@ def download_data(symbols):
             data_all[symbols[0]] = d
 
     return data_all
-
-
-
-
 
 def mark_premarket(df):
     if not isinstance(df, pd.DataFrame):
@@ -677,18 +677,13 @@ def process_symbol(s, data_all):
     }
 
 def scan_market_core(symbols, data_all):
-    results = []
-    for s in symbols:
-        try:
-            r = process_symbol(s, data_all)
-            if r is not None:
-                results.append(r)
-        except Exception as e:
-            print(f"ERROR {s}: {e}")
-    return results
+    with ThreadPoolExecutor(max_workers=8) as executor:
+        results = list(executor.map(lambda s: process_symbol(s, data_all), symbols))
+
+    return [r for r in results if r is not None]
 
 @st.cache_data(ttl=300, max_entries=1)
-def scan_market(limit=100):
+def scan_market(limit=50):
     symbols = filter_symbols_by_session(get_sp500_symbols(), SESSION)[:limit]
     data_all = download_data(symbols)
     results = scan_market_core(symbols, data_all)
@@ -778,7 +773,10 @@ st.sidebar.write("Scanner UI geladen")
 gainers, losers = [], []
 
 try:
-    gainers, losers = scan_market(limit)
+    if st.sidebar.button("▶ Scan starten"):
+        gainers, losers = scan_market(limit)
+    else:
+        gainers, losers = [], []
     st.sidebar.write("scan_market fertig")
 except Exception as e:
     st.sidebar.error(f"Scanner Fehler: {e}")
@@ -1380,203 +1378,12 @@ for i in range(start, len(df)):
     elif short_score > long_score and delta <= -DELTA_THRESHOLD:
         df.at[df.index[i], "ShortSignal"] = True
         
-# EMA
-df["EMA9"]  = df["Close"].ewm(span=9, adjust=False).mean()
-df["EMA20"] = df["Close"].ewm(span=20, adjust=False).mean()
-df["EMA50"] = df["Close"].ewm(span=50, adjust=False).mean()
-df["EMA200"] = df["Close"].ewm(span=200, adjust=False).mean()
-
-# ATR
-df["ATR"] = compute_atr(df)
-df["ATR_pct"] = df["ATR"] / df["Close"]
-
-# RSI
-delta = df["Close"].diff()
-gain = delta.clip(lower=0)
-loss = -delta.clip(upper=0)
-
-avg_gain = gain.ewm(alpha=1/14).mean()
-avg_loss = loss.ewm(alpha=1/14).mean()
-
-rs = avg_gain / avg_loss.replace(0,1e-10)
-df["RSI"] = 100 - (100 / (1 + rs))
-
-# MACD
-ema12 = df["Close"].ewm(span=12).mean()
-ema26 = df["Close"].ewm(span=26).mean()
-
-df["MACD"] = ema12 - ema26
-df["MACD_signal"] = df["MACD"].ewm(span=9).mean()
-df["MACD_hist"] = df["MACD"] - df["MACD_signal"]
 
 df["date"] = df.index.date
-
-def compute_vwap_suite(df):
-    df = df.copy()
-
-    tp = (df["High"] + df["Low"] + df["Close"]) / 3
-
-    # RTH
-    df["Vol_RTH"] = np.where(df["Session"] == "RTH", df["Volume"], 0)
-    df["pv_rth"] = tp * df["Vol_RTH"]
-
-    df["cum_vol_rth"] = df.groupby(df.index.date)["Vol_RTH"].cumsum()
-    df["cum_pv_rth"] = df.groupby(df.index.date)["pv_rth"].cumsum()
-
-    df["VWAP_RTH"] = df["cum_pv_rth"] / df["cum_vol_rth"].replace(0, np.nan)
-
-    # PRE
-    df["vol_pre"] = np.where(df["Session"] == "PREMARKET", df["Volume"], 0)
-    df["pv_pre"] = tp * df["vol_pre"]
-
-    df["cum_vol_pre"] = df.groupby(df.index.date)["vol_pre"].cumsum()
-    df["cum_pv_pre"] = df.groupby(df.index.date)["pv_pre"].cumsum()
-
-    df["VWAP_PRE"] = df["cum_pv_pre"] / df["cum_vol_pre"]
-
-    # AH
-    df["vol_ah"] = np.where(df["Session"] == "AFTERHOURS", df["Volume"], 0)
-    df["pv_ah"] = tp * df["vol_ah"]
-
-    df["cum_vol_ah"] = df.groupby(df.index.date)["vol_ah"].cumsum()
-    df["cum_pv_ah"] = df.groupby(df.index.date)["pv_ah"].cumsum()
-
-    df["VWAP_AH"] = df["cum_pv_ah"] / df["cum_vol_ah"]
-
-    return df
-
-df = compute_vwap_suite(df)
-
-typical_price = (df["High"] + df["Low"] + df["Close"]) / 3
-vwap_dev = (typical_price - df["VWAP_RTH"]).rolling(20).std()
-
-df["VWAP_upper2"] = df["VWAP_RTH"] + 2*vwap_dev
-df["VWAP_lower2"] = df["VWAP_RTH"] - 2*vwap_dev
-
-# Keltner
-kc_mult = 1.5
-df["KC_MID"] = df["Close"].ewm(span=20).mean()
-df["KC_UPPER"] = df["KC_MID"] + kc_mult * df["ATR"]
-df["KC_LOWER"] = df["KC_MID"] - kc_mult * df["ATR"]
-
-# Bollinger
-df["BB_MID"] = df["Close"].rolling(20).mean()
-df["BB_STD"] = df["Close"].rolling(20).std()
-df["BB_UPPER"] = df["BB_MID"] + 2*df["BB_STD"]
-df["BB_LOWER"] = df["BB_MID"] - 2*df["BB_STD"]
-
-df["BB_WIDTH"] = df["BB_UPPER"] - df["BB_LOWER"]
-
-up_move = df["High"].diff()
-down_move = -df["Low"].diff()
-
-df["+DM"] = np.where((up_move > down_move) & (up_move > 0), up_move, 0)
-df["-DM"] = np.where((down_move > up_move) & (down_move > 0), down_move, 0)
-
-tr = np.maximum(df["High"] - df["Low"],
-       np.maximum(abs(df["High"] - df["Close"].shift(1)),
-                  abs(df["Low"] - df["Close"].shift(1))))
-
-atr = tr.ewm(span=14).mean()
-
-df["+DI"] = 100 * (df["+DM"].ewm(span=14).mean() / atr)
-df["-DI"] = 100 * (df["-DM"].ewm(span=14).mean() / atr)
-
-dx = (abs(df["+DI"] - df["-DI"]) / (df["+DI"] + df["-DI"])) * 100
-df["ADX"] = dx.ewm(span=14).mean().fillna(0)
-
-df["Trend_Strong"] = df["ADX"] > 25
-df["Trend_Long"] = df["+DI"] > df["-DI"]
-df["Trend_Short"] = df["-DI"] > df["+DI"]
-
-df["delta"] = np.where(df["Close"] > df["Open"], df["Volume"], -df["Volume"])
-df["cum_delta"] = df["delta"].cumsum()
-
-df["Vol_Current"] = df["Volume"]
-df["Vol_Avg"] = df["Volume"].rolling(20).mean()
 
 df["Daily_High"] = df["High"].rolling("1D").max()
 df["Daily_Low"] = df["Low"].rolling("1D").min()
 
-def detect_market_regime(df):
-    if "VWAP_RTH" not in df.columns:
-        return "UNKNOWN"
-
-    price = df["Close"]
-    vwap = df["VWAP_RTH"]
-
-    crosses = ((price > vwap) != (price.shift(1) > vwap.shift(1))).rolling(20).sum()
-
-    ema20 = df["EMA20"]
-    ema50 = df["EMA50"]
-    trend_strength = abs(ema20 - ema50) / price
-
-    if crosses.iloc[-1] > 3 and trend_strength.iloc[-1] < 0.002:
-        return "RANGE"
-    else:
-        return "TREND"
-
-df["MarketRegime"] = detect_market_regime(df)
-
-lookback = 20
-
-df["high_max"] = df["High"].rolling(lookback).max()
-df["low_min"] = df["Low"].rolling(lookback).min()
-
-df["sweep_high"] = df["High"] > df["high_max"].shift(1)
-df["sweep_low"] = df["Low"] < df["low_min"].shift(1)
-
-df["vol_mean"] = df["Volume"].rolling(20).mean()
-df["vol_spike"] = df["Volume"] > df["Vol_Avg_RTH"] * 1.5
-
-df["SellNewsShort"] = False
-df["SellNewsLong"] = False
-
-start = max(2, len(df) - 100)
-
-for i in range(start, len(df)):
-    prev = df.iloc[i-1]
-    curr = df.iloc[i]
-
-    # SHORT
-    if (
-        prev["sweep_high"] and
-        prev["Close"] > prev["VWAP_RTH"] and
-        curr["Close"] < curr["VWAP_RTH"] and
-        curr["Close"] < prev["Close"]
-    ):
-        df.at[df.index[i], "SellNewsShort"] = True
-
-    # LONG
-    if (
-        prev["sweep_low"] and
-        prev["Close"] < prev["VWAP_RTH"] and
-        curr["Close"] > curr["VWAP_RTH"] and
-        curr["Close"] > prev["Close"]
-    ):
-        df.at[df.index[i], "SellNewsLong"] = True
-        
-df["LongScore"] = 0.0
-df["ShortScore"] = 0.0
-
-df["VWAP_Reclaim_Long"] = (
-    (df["Close"].shift(1) < df["VWAP_RTH"].shift(1)) &
-    (df["Close"] > df["VWAP_RTH"])
-)
-
-df["VWAP_Reclaim_Short"] = (
-    (df["Close"].shift(1) > df["VWAP_RTH"].shift(1)) &
-    (df["Close"] < df["VWAP_RTH"])
-)
-
-df["VWAP_Extreme_High"] = df["Close"] > df["VWAP_upper2"]
-df["VWAP_Extreme_Low"]  = df["Close"] < df["VWAP_lower2"]
-
-df["HH"] = df["High"] > df["High"].shift(1)
-df["LL"] = df["Low"] < df["Low"].shift(1)
-
-df["KC_Above"] = df["Close"] > df["KC_UPPER"]
-df["KC_Below"] = df["Close"] < df["KC_LOWER"]
 
 start = max(2, len(df) - 100)
 
