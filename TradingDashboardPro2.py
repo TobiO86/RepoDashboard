@@ -1614,6 +1614,8 @@ def calculate_sl_tp(df, i, rr_target=2):
 # -----------------------
 # APPLY SL/TP + TRAILING
 # -----------------------
+df["SL"] = np.nan
+df["TP"] = np.nan
 
 for i in range(1, len(df)):
 
@@ -1630,16 +1632,25 @@ for i in range(1, len(df)):
             df.at[df.index[i], "SL"] = sl
             df.at[df.index[i], "TP"] = tp
 
-    # 🔁 Trailing Stop
-    if df["LongSignal"].iloc[i-1]:
-        prev_sl = df["SL"].iloc[i-1]
-        new_sl = price - atr * 1.2
-        df.at[df.index[i], "SL"] = max(prev_sl, new_sl)
+        # LONG trailing
+        if df["LongSignal"].iloc[i-1]:
+            prev_sl = df["SL"].iloc[i-1]
+            new_sl = price - atr * 1.2
 
-    if df["ShortSignal"].iloc[i-1]:
-        prev_sl = df["SL"].iloc[i-1]
-        new_sl = price + atr * 1.2
-        df.at[df.index[i], "SL"] = min(prev_sl, new_sl)    
+            if not np.isnan(prev_sl):
+                df.at[df.index[i], "SL"] = max(prev_sl, new_sl)
+            else:
+                df.at[df.index[i], "SL"] = new_sl
+
+        # SHORT trailing
+        if df["ShortSignal"].iloc[i-1]:
+            prev_sl = df["SL"].iloc[i-1]
+            new_sl = price + atr * 1.2
+
+            if not np.isnan(prev_sl):
+                df.at[df.index[i], "SL"] = min(prev_sl, new_sl)
+            else:
+                df.at[df.index[i], "SL"] = new_sl
 
 df["Date"] = df.index.date
 
