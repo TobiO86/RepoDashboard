@@ -495,6 +495,17 @@ def mark_premarket(df):
 
     return df
 
+# ATR
+def compute_atr(df):
+    tr = np.maximum(
+        df["High"] - df["Low"],
+        np.maximum(
+            abs(df["High"] - df["Close"].shift(1)),
+            abs(df["Low"] - df["Close"].shift(1))
+        )
+    )
+    return tr.ewm(span=14, adjust=False).mean()
+
 def process_symbol(s, data_all):
     df_s = data_all.get(s)
 
@@ -739,7 +750,7 @@ def render_list(title, stocks):
 
 st.sidebar.subheader("🔥 Scanner PRO MAX")
 
-with st.sidebar.expander("🔥 Scanner PRO MAX", expanded=False):
+with st.sidebar.expander("🔥 Scanner PRO MAX", expanded=True):
     limit = st.slider(
         "Universe Size",
         50, 500, 100,
@@ -753,11 +764,13 @@ color_sessions = st.sidebar.checkbox("Sessions farbig", True)
 
 if live_mode:
     if SESSION == "WEEKEND":
-        st.caption("Weekend Mode: nur Crypto + Futures")
+        st.sidebar.caption("Weekend Mode: nur Crypto + Futures")
     elif SESSION != "RTH":
-        st.caption(f"Off-hours: {SESSION}")
+        st.sidebar.caption(f"Off-hours: {SESSION}")
 
+st.sidebar.write("Scanner UI geladen")
 gainers, losers = scan_market(limit)
+st.sidebar.write("scan_market fertig")
 
 render_list("Top Momentum ↑", gainers)
 render_list("Top Breakdown ↓", losers)
@@ -942,16 +955,7 @@ df["EMA20"]  = df["Close"].ewm(span=20, adjust=False).mean()
 df["EMA50"]  = df["Close"].ewm(span=50, adjust=False).mean()
 df["EMA200"] = df["Close"].ewm(span=200, adjust=False).mean()
 
-# ATR
-def compute_atr(df):
-    tr = np.maximum(
-        df["High"] - df["Low"],
-        np.maximum(
-            abs(df["High"] - df["Close"].shift(1)),
-            abs(df["Low"] - df["Close"].shift(1))
-        )
-    )
-    return tr.ewm(span=14, adjust=False).mean()
+
 
 df["ATR"] = compute_atr(df)
 df["ATR_pct"] = df["ATR"] / df["Close"]
