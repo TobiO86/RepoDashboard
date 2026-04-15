@@ -774,8 +774,14 @@ if live_mode:
         st.sidebar.caption(f"Off-hours: {SESSION}")
 
 st.sidebar.write("Scanner UI geladen")
-gainers, losers = scan_market(limit)
-st.sidebar.write("scan_market fertig")
+
+try:
+    gainers, losers = scan_market(limit)
+    st.sidebar.write("scan_market fertig")
+    render_list("Top Momentum ↑", gainers)
+    render_list("Top Breakdown ↓", losers)
+except Exception as e:
+    st.sidebar.error(f"Scanner Fehler: {e}")
 
 render_list("Top Momentum ↑", gainers)
 render_list("Top Breakdown ↓", losers)
