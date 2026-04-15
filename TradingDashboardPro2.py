@@ -17,6 +17,8 @@ import traceback
 
 st.set_page_config(layout="wide")
 
+st_autorefresh(interval=30000, key="refresh")  # 60s
+
 def get_conn():
     return sqlite3.connect("alerts.db", check_same_thread=False)
 
@@ -773,10 +775,7 @@ st.sidebar.write("Scanner UI geladen")
 gainers, losers = [], []
 
 try:
-    if st.sidebar.button("▶ Scan starten"):
-        gainers, losers = scan_market(limit)
-    else:
-        gainers, losers = [], []
+    gainers, losers = scan_market(limit)
     st.sidebar.write("scan_market fertig")
 except Exception as e:
     st.sidebar.error(f"Scanner Fehler: {e}")
