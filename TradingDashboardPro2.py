@@ -406,7 +406,7 @@ if st.sidebar.button("💾 Alarme speichern"):
 # =========================================================
 # 🔹 MARKET SCANNER
 # =========================================================
-st.sidebar.write("NACH ALERT BLOCK")
+st.write("NACH ALERT BLOCK")
 
 try:
     @st.cache_data(ttl=86400)
