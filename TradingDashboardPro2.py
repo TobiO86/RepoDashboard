@@ -17,7 +17,7 @@ import traceback
 
 st.set_page_config(layout="wide")
 
-st_autorefresh(interval=30000, key="refresh")  # 60s
+st_autorefresh(interval=15000, key="refresh")  # 60s
 
 def get_conn():
     return sqlite3.connect("alerts.db", check_same_thread=False)
