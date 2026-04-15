@@ -305,7 +305,7 @@ def check_alerts():
 
     save_triggered_sql(triggered)
     
-#check_alerts()    
+check_alerts()    
     
 # =========================================================
 # 🔹 SIDEBAR INPUTS
@@ -708,16 +708,16 @@ def scan_market(limit=100):
         if "sent_signals" not in st.session_state:
             st.session_state.sent_signals = set()
 
-    #    if signal_id not in st.session_state.sent_signals:
-    #        send_telegram(
-    #            f"🚨 {r['symbol']} {r['setup']}\n\n"
-    #            f"Entry: {r['price']:.2f}\n"
-    #            f"SL: {r['sl']:.2f}\n"
-    #            f"TP: {r['tp']:.2f}\n"
-    #            f"RR: {r['rr']:.2f}\n\n"
-    #            f"Score: {r['score']} | Δ {r['delta']}"
-    #        )
-    #        st.session_state.sent_signals.add(signal_id)
+        if signal_id not in st.session_state.sent_signals:
+            send_telegram(
+                f"🚨 {r['symbol']} {r['setup']}\n\n"
+                f"Entry: {r['price']:.2f}\n"
+                f"SL: {r['sl']:.2f}\n"
+                f"TP: {r['tp']:.2f}\n"
+                f"RR: {r['rr']:.2f}\n\n"
+                f"Score: {r['score']} | Δ {r['delta']}"
+            )
+            st.session_state.sent_signals.add(signal_id)
 
     def pad(x):
         return x[:10] + [{}] * max(0, 10 - len(x))
@@ -786,6 +786,10 @@ except Exception as e:
 render_list("Top Momentum ↑", gainers)
 render_list("Top Breakdown ↓", losers)
 
+if st.sidebar.button("♻️ Full Reset"):
+    st.cache_data.clear()
+    st.session_state.clear()
+    st.rerun()
 st.sidebar.markdown("---")
   
 @st.cache_data(ttl=120)
