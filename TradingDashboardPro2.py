@@ -305,7 +305,7 @@ def check_alerts():
 
     save_triggered_sql(triggered)
     
-check_alerts()    
+#check_alerts()    
     
 # =========================================================
 # 🔹 SIDEBAR INPUTS
@@ -427,7 +427,6 @@ try:
             "BTC-USD","ETH-USD","SOL-USD","XRP_USD","ADA_USD","DOGE"
         ]
 
-    st.sidebar.write("TOP Erreicht")
     def filter_symbols_by_session(symbols, session):
         if session == "RTH":
             symbols = symbols[:100]
@@ -439,7 +438,6 @@ try:
 
         return symbols
 
-    st.sidebar.write("TOP Erreicht")
     @st.cache_data(ttl=300)
     def download_data(symbols):
         data_all = {}
@@ -477,7 +475,6 @@ try:
 except Exception:
     st.error(traceback.format_exc())
     st.stop()
-st.sidebar.write("TOP Erreicht")
 
 def mark_premarket(df):
     if not isinstance(df, pd.DataFrame):
@@ -509,7 +506,6 @@ def mark_premarket(df):
         print("Session Error:", e)
 
     return df
-st.sidebar.write("TOP Erreicht")
 # ATR
 def compute_atr(df):
     tr = np.maximum(
@@ -520,7 +516,6 @@ def compute_atr(df):
         )
     )
     return tr.ewm(span=14, adjust=False).mean()
-st.sidebar.write("TOP Erreicht")
 def process_symbol(s, data_all):
     df_s = data_all.get(s)
 
@@ -684,7 +679,6 @@ def process_symbol(s, data_all):
         "signal_ok": signal_ok
     }
 
-st.sidebar.write("TOP Erreicht")
 def scan_market_core(symbols, data_all):
     results = []
     for s in symbols:
@@ -696,7 +690,6 @@ def scan_market_core(symbols, data_all):
             print(f"ERROR {s}: {e}")
     return results
 
-st.sidebar.write("TOP Erreicht")
 @st.cache_data(ttl=300, max_entries=1)
 def scan_market(limit=100):
     symbols = filter_symbols_by_session(get_sp500_symbols(), SESSION)[:limit]
@@ -718,16 +711,16 @@ def scan_market(limit=100):
         if "sent_signals" not in st.session_state:
             st.session_state.sent_signals = set()
 
-        if signal_id not in st.session_state.sent_signals:
-            send_telegram(
-                f"🚨 {r['symbol']} {r['setup']}\n\n"
-                f"Entry: {r['price']:.2f}\n"
-                f"SL: {r['sl']:.2f}\n"
-                f"TP: {r['tp']:.2f}\n"
-                f"RR: {r['rr']:.2f}\n\n"
-                f"Score: {r['score']} | Δ {r['delta']}"
-            )
-            st.session_state.sent_signals.add(signal_id)
+    #    if signal_id not in st.session_state.sent_signals:
+    #        send_telegram(
+    #            f"🚨 {r['symbol']} {r['setup']}\n\n"
+    #            f"Entry: {r['price']:.2f}\n"
+    #            f"SL: {r['sl']:.2f}\n"
+    #            f"TP: {r['tp']:.2f}\n"
+    #            f"RR: {r['rr']:.2f}\n\n"
+    #            f"Score: {r['score']} | Δ {r['delta']}"
+    #        )
+    #        st.session_state.sent_signals.add(signal_id)
 
     def pad(x):
         return x[:10] + [{}] * max(0, 10 - len(x))
@@ -763,15 +756,15 @@ def render_list(title, stocks):
 # 🔹 SCANNER SIDEBAR UI
 # =========================================================
 
+st.sidebar.markdown("---")
 st.sidebar.subheader("🔥 Scanner PRO MAX")
 
-with st.sidebar.expander("🔥 Scanner PRO MAX", expanded=True):
-    limit = st.slider(
-        "Universe Size",
-        50, 500, 100,
-        step=50,
-        key="scanner_limit"
-    )
+limit = st.sidebar.slider(
+    "Universe Size",
+    50, 500, 100,
+    step=50,
+    key="scanner_limit"
+)
 
 live_mode = st.sidebar.checkbox("⚡ Live Mode (RTH only)", True)
 show_rth_only_vwap = st.sidebar.checkbox("VWAP nur RTH", True)
@@ -785,17 +778,18 @@ if live_mode:
 
 st.sidebar.write("Scanner UI geladen")
 
+gainers, losers = [], []
+
 try:
     gainers, losers = scan_market(limit)
     st.sidebar.write("scan_market fertig")
-    render_list("Top Momentum ↑", gainers)
-    render_list("Top Breakdown ↓", losers)
 except Exception as e:
     st.sidebar.error(f"Scanner Fehler: {e}")
 
 render_list("Top Momentum ↑", gainers)
 render_list("Top Breakdown ↓", losers)
 
+st.sidebar.markdown("---")
     
 @st.cache_data(ttl=120)
 def load_multi_exchange(symbol, period, interval):
