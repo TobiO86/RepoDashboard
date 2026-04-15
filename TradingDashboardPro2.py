@@ -14,6 +14,8 @@ import json
 import sqlite3
 from concurrent.futures import ThreadPoolExecutor
 
+st.set_page_config(layout="wide")
+
 def get_conn():
     return sqlite3.connect("alerts.db", check_same_thread=False)
 
@@ -302,10 +304,12 @@ def check_alerts():
 
     save_triggered_sql(triggered)
     
+check_alerts()    
+    
 # =========================================================
 # 🔹 SIDEBAR INPUTS
 # =========================================================
-st.set_page_config(layout="wide")
+
 
 if "symbol" not in st.session_state:
     st.session_state.symbol = "AAPL"
@@ -751,7 +755,7 @@ def render_list(title, stocks):
 
 st.sidebar.subheader("🔥 Scanner PRO MAX")
 
-with st.sidebar.expander("🔥 Scanner PRO MAX", expanded=False):
+with st.sidebar.expander("🔥 Scanner PRO MAX", expanded=True):
     limit = st.slider(
         "Universe Size",
         50, 500, 100,
