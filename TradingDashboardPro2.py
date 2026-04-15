@@ -313,7 +313,7 @@ def check_alerts():
 
 
 if "symbol" not in st.session_state:
-    st.session_state.symbol = "AAPL"
+    st.session_state.symbol = "BTC-USD"
 
 symbol_input = st.sidebar.text_input(
     "Ticker",
