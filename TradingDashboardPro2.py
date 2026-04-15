@@ -790,7 +790,8 @@ render_list("Top Momentum ↑", gainers)
 render_list("Top Breakdown ↓", losers)
 
 st.sidebar.markdown("---")
-    
+st.stop() 
+  
 @st.cache_data(ttl=120)
 def load_multi_exchange(symbol, period, interval):
     eu_map = {
