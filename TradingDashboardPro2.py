@@ -82,7 +82,7 @@ interval = "5m"          # 1m, 5m, 15m
 # -----------------------
 # DATA
 # -----------------------
-@st.cache_data(ttl=20)
+@st.cache_data(ttl=15)
 def load_fast_price(symbol):
     try:
         df = yf.download(symbol, period="1d", interval="1m", progress=False, threads=False)
@@ -101,7 +101,7 @@ def load_fast_price(symbol):
 
     return df
 
-@st.cache_data(ttl=20)
+@st.cache_data(ttl=15)
 def load_global_prices(symbol):
     eu_map = {
         "TSLA": "TSLA.DE",
@@ -164,7 +164,7 @@ def load_global_prices(symbol):
 
     return eu_price, eu_symbol
 
-@st.cache_data(ttl=120)
+@st.cache_data(ttl=60)
 def load_data_with_premarket(symbol, period, interval):
     # prepost=True liefert auch Pre- und After-Hours
     df = yf.download(
