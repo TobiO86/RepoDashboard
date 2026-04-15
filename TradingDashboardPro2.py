@@ -14,6 +14,38 @@ import json
 import sqlite3
 from concurrent.futures import ThreadPoolExecutor
 
+def get_conn():
+    return sqlite3.connect("alerts.db", check_same_thread=False)
+
+def init_db():
+    conn = get_conn()
+    c = conn.cursor()
+
+    # Alerts Tabelle
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS alerts (
+            ticker TEXT PRIMARY KEY,
+            above REAL,
+            below REAL
+        )
+    """)
+
+    # Triggered Tabelle
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS triggered (
+            ticker TEXT PRIMARY KEY,
+            above INTEGER,
+            below INTEGER
+        )
+    """)
+
+    conn.commit()
+    conn.close()
+
+
+# Beim Start einmal ausführen
+init_db()
+
 # =========================================================
 # 🔹 DEFAULT INPUTS
 # =========================================================
@@ -121,6 +153,230 @@ def load_data_with_premarket(symbol, period, interval):
         df.columns = df.columns.get_level_values(0)
     return df.dropna(subset=["Close"])
 
+# =========================================================
+# 🔹 TELEGRAM + ALERTS
+# =========================================================
+
+def send_telegram(msg):
+    TOKEN = st.secrets["TELEGRAM_TOKEN"]
+    CHAT_ID = st.secrets["TELEGRAM_CHAT_ID"]
+
+    url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
+
+    try:
+        response = requests.post(
+            url,
+            data={"chat_id": CHAT_ID, "text": msg},
+            timeout=5
+        )
+        if response.status_code != 200:
+            st.warning(f"Telegram failed: {response.text}")
+    except Exception as e:
+        st.warning(f"Telegram Error: {e}")
+
+def save_alerts_sql(alerts_dict):
+    conn = get_conn()
+    c = conn.cursor()
+
+    c.execute("DELETE FROM alerts")
+
+    for ticker, v in alerts_dict.items():
+        c.execute(
+            "INSERT INTO alerts (ticker, above, below) VALUES (?, ?, ?)",
+            (ticker, v["above"], v["below"])
+        )
+
+    conn.commit()
+    conn.close()
+
+
+def load_alerts_sql():
+    conn = get_conn()
+    c = conn.cursor()
+
+    c.execute("SELECT ticker, above, below FROM alerts")
+    rows = c.fetchall()
+
+    conn.close()
+
+    return {
+        r[0]: {"above": r[1], "below": r[2]}
+        for r in rows
+    }
+
+
+def load_triggered_sql():
+    conn = get_conn()
+    c = conn.cursor()
+
+    c.execute("SELECT ticker, above, below FROM triggered")
+    rows = c.fetchall()
+
+    conn.close()
+
+    return {
+        r[0]: {"above": bool(r[1]), "below": bool(r[2])}
+        for r in rows
+    }
+
+
+def save_triggered_sql(triggered):
+    conn = get_conn()
+    c = conn.cursor()
+
+    c.execute("DELETE FROM triggered")
+
+    for ticker, v in triggered.items():
+        c.execute(
+            "INSERT INTO triggered (ticker, above, below) VALUES (?, ?, ?)",
+            (ticker, int(v["above"]), int(v["below"]))
+        )
+
+    conn.commit()
+    conn.close()
+
+
+def check_alerts():
+    alerts = load_alerts_sql()
+    triggered = load_triggered_sql()
+
+    if not alerts:
+        return
+
+    for ticker, levels in alerts.items():
+        try:
+            data = yf.download(ticker, period="5d", interval="5m", progress=False)
+            if data.empty:
+                continue
+
+            close = data["Close"]
+            if isinstance(close, pd.DataFrame):
+                close = close.iloc[:, 0]
+
+            price = float(close.dropna().iloc[-1])
+
+        except Exception as e:
+            st.write(f"Fehler bei {ticker}: {e}")
+            continue
+
+        if ticker not in triggered:
+            triggered[ticker] = {"above": False, "below": False}
+
+        # ABOVE
+        if levels["above"] > 0:
+            if price >= levels["above"] and not triggered[ticker]["above"]:
+                send_telegram(f"🚀 {ticker} über {levels['above']} → {price:.2f}")
+                triggered[ticker]["above"] = True
+
+            if price < levels["above"]:
+                triggered[ticker]["above"] = False
+
+        # BELOW
+        if levels["below"] > 0:
+            if price <= levels["below"] and not triggered[ticker]["below"]:
+                send_telegram(f"📉 {ticker} unter {levels['below']} → {price:.2f}")
+                triggered[ticker]["below"] = True
+
+            if price > levels["below"]:
+                triggered[ticker]["below"] = False
+
+    save_triggered_sql(triggered)
+    
+# =========================================================
+# 🔹 SIDEBAR INPUTS
+# =========================================================
+
+if "symbol" not in st.session_state:
+    st.session_state.symbol = "AAPL"
+
+symbol_input = st.sidebar.text_input(
+    "Ticker",
+    value=st.session_state.symbol,
+    key="ticker_input"
+).upper()
+
+if symbol_input != st.session_state.symbol:
+    st.session_state.symbol = symbol_input
+
+symbol = st.session_state.symbol
+
+valid_map = {
+    "1m": ["1d", "5d"],
+    "5m": ["1d", "5d"],
+    "15m": ["5d", "1mo"],
+    "1h": ["1mo", "3mo"],
+    "4h": ["3mo", "6mo"],
+    "1d": ["1y", "max"]
+}
+
+if "interval_select" not in st.session_state:
+    st.session_state.interval_select = "5m"
+
+if "period_select" not in st.session_state:
+    st.session_state.period_select = valid_map["5m"][1]
+
+interval = st.sidebar.selectbox(
+    "Timeframe",
+    list(valid_map.keys()),
+    key="interval_select"
+)
+
+valid_periods = valid_map[interval]
+
+if st.session_state.period_select not in valid_periods:
+    st.session_state.period_select = valid_periods[0]
+
+period = st.sidebar.selectbox(
+    "Period",
+    valid_periods,
+    index=valid_periods.index(st.session_state.period_select),
+    key="period_select"
+)
+
+st.sidebar.caption(f"Aktive Kombi: {interval} / {period}")
+
+if st.sidebar.button("🔄 Refresh Data"):
+    st.cache_data.clear()
+    st.rerun()
+
+if st.sidebar.button("🧪 Test LONG Signal"):
+    send_telegram("🚀 TEST LONG SIGNAL funktioniert!")
+    
+# =========================================================
+# 🔹 ALERT SIDEBAR
+# =========================================================
+
+st.sidebar.header("📊 Preisalarme")
+
+PriceAlerttickers = []
+
+for i in range(2):
+    ticker_input = st.sidebar.text_input(f"Ticker {i+1}", key=f"alert_ticker_{i}")
+    label = ticker_input if ticker_input else f"Ticker {i+1}"
+
+    price_above = st.sidebar.number_input(f"{label} ≥ Preis", key=f"above_{i}", value=0.0)
+    price_below = st.sidebar.number_input(f"{label} ≤ Preis", key=f"below_{i}", value=0.0)
+
+    if ticker_input:
+        PriceAlerttickers.append({
+            "ticker": ticker_input.upper(),
+            "above": price_above,
+            "below": price_below
+        })
+
+if st.sidebar.button("💾 Alarme speichern"):
+    if len(PriceAlerttickers) == 0:
+        st.sidebar.warning("Bitte mindestens einen Ticker eingeben")
+    else:
+        alerts = {
+            t["ticker"]: {
+                "above": t["above"],
+                "below": t["below"]
+            } for t in PriceAlerttickers
+        }
+        save_alerts_sql(alerts)
+        st.sidebar.success("Gespeichert!")    
+    
 @st.cache_data(ttl=120)
 def load_multi_exchange(symbol, period, interval):
     eu_map = {
@@ -1426,32 +1682,7 @@ if df["SL"].notna().any():
     fig.add_hline(y=df["SL"].dropna().iloc[-1], line_dash="dot", line_color="red")
 
 if df["TP"].notna().any():
-    fig.add_hline(y=df["TP"].dropna().iloc[-1], line_dash="dot", line_color="green")
-    
-st.plotly_chart(fig, use_container_width=True)
-
-col20, col21, col22 = st.columns(3)
-
-col20.metric("Signal Strength", f"{max(long_score, short_score):.2f}")
-col21.metric("Long Score", f"{long_score:.2f}")
-col22.metric("Short Score", f"{short_score:.2f}")
-
-# SMART SIGNAL
-if smart_type == "LONG":
-    st.success(f"🚀 SMART LONG | Score: {long_score:.2f}")
-elif smart_type == "SHORT":
-    st.error(f"🔻 SMART SHORT | Score: {short_score:.2f}")
-else:
-    st.info("⚖️ NO SIGNAL")
-
-# A+ SIGNAL
-if signal:
-    if signal["type"] == "LONG":
-        st.success(f"🚀 A+ LONG | Entry {signal['price']:.2f} | RR {signal['rr']:.2f}")
-    else:
-        st.error(f"🔻 A+ SHORT | Entry {signal['price']:.2f} | RR {signal['rr']:.2f}")
-else:
-    st.info("⚖️ NO A+ SETUP")    
+    fig.add_hline(y=df["TP"].dropna().iloc[-1], line_dash="dot", line_color="green")   
     
 # =========================================================
 # 🔹 SUPPORT / RESISTANCE
