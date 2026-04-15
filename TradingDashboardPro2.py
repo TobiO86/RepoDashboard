@@ -406,75 +406,72 @@ if st.sidebar.button("💾 Alarme speichern"):
 # =========================================================
 # 🔹 MARKET SCANNER
 # =========================================================
-st.write("NACH ALERT BLOCK")
 
-try:
-    @st.cache_data(ttl=86400)
-    def get_sp500_symbols():
-        return [
-            "AAPL","MSFT","NVDA","AMZN","META","GOOGL","TSLA",
-            "AVGO","TSM","AMD","NFLX","INTC","ADBE","CRM","LITE",
-            "COIN","PLTR","RIVN","SOFI","SNAP","ROKU",
-            "UPST","AFRM","DKNG","SHOP","SQ","PYPL",
-            "SMCI","ARM","MU","ASML","LRCX","KLAC","MRVL",
-            "JPM","GS","BAC","MS","SCHW",
-            "XOM","CVX","OXY","SLB","HAL","ENR.DE",
-            "LLY","UNH","JNJ","MRNA","BNTX",
-            "CAT","BA","GE","DE","NOC",
-            "SPY","QQQ","IWM","DIA","XLF","XLK","XLE",
-            "^GSPC","^NDX","^DJI",
-            "VIXY","UVXY",
-            "BTC-USD","ETH-USD","SOL-USD","XRP_USD","ADA_USD","DOGE"
-        ]
 
-    def filter_symbols_by_session(symbols, session):
-        if session == "RTH":
-            symbols = symbols[:100]
-        else:
-            symbols = symbols[:30]
+@st.cache_data(ttl=86400)
+def get_sp500_symbols():
+    return [
+        "AAPL","MSFT","NVDA","AMZN","META","GOOGL","TSLA",
+        "AVGO","TSM","AMD","NFLX","INTC","ADBE","CRM","LITE",
+        "COIN","PLTR","RIVN","SOFI","SNAP","ROKU",
+        "UPST","AFRM","DKNG","SHOP","SQ","PYPL",
+        "SMCI","ARM","MU","ASML","LRCX","KLAC","MRVL",
+        "JPM","GS","BAC","MS","SCHW",
+        "XOM","CVX","OXY","SLB","HAL","ENR.DE",
+        "LLY","UNH","JNJ","MRNA","BNTX",
+        "CAT","BA","GE","DE","NOC",
+        "SPY","QQQ","IWM","DIA","XLF","XLK","XLE",
+        "^GSPC","^NDX","^DJI",
+        "VIXY","UVXY",
+        "BTC-USD","ETH-USD","SOL-USD","XRP_USD","ADA_USD","DOGE"
+    ]
 
-        if session == "WEEKEND":
-            return [s for s in symbols if "=F" in s or "USD" in s]
+def filter_symbols_by_session(symbols, session):
+    if session == "RTH":
+        symbols = symbols[:100]
+    else:
+        symbols = symbols[:30]
 
-        return symbols
+    if session == "WEEKEND":
+        return [s for s in symbols if "=F" in s or "USD" in s]
 
-    @st.cache_data(ttl=300)
-    def download_data(symbols):
-        data_all = {}
+    return symbols
 
-        try:
-            d = yf.download(
-                tickers=" ".join(symbols),
-                period="5d",
-                interval="5m",
-                group_by="ticker",
-                threads=False,
-                progress=False
-            )
-        except Exception:
-            return data_all
+@st.cache_data(ttl=300)
+def download_data(symbols):
+    data_all = {}
 
-        if isinstance(d.columns, pd.MultiIndex):
-            for ticker in symbols:
-                if ticker in d.columns.get_level_values(0):
-                    df_t = d[ticker].copy()
-                    if isinstance(df_t.columns, pd.MultiIndex):
-                        df_t.columns = df_t.columns.get_level_values(0)
-                    df_t = df_t.dropna(subset=["Close"])
-                    if not df_t.empty:
-                        data_all[ticker] = df_t
-        else:
-            d = d.dropna(subset=["Close"]) if "Close" in d.columns else d.dropna()
-            if not d.empty and len(symbols) > 0:
-                data_all[symbols[0]] = d
-
+    try:
+        d = yf.download(
+            tickers=" ".join(symbols),
+            period="5d",
+            interval="5m",
+            group_by="ticker",
+            threads=False,
+            progress=False
+        )
+    except Exception:
         return data_all
 
-        st.sidebar.write("GET_SP500 OK")
+    if isinstance(d.columns, pd.MultiIndex):
+        for ticker in symbols:
+            if ticker in d.columns.get_level_values(0):
+                df_t = d[ticker].copy()
+                if isinstance(df_t.columns, pd.MultiIndex):
+                    df_t.columns = df_t.columns.get_level_values(0)
+                df_t = df_t.dropna(subset=["Close"])
+                if not df_t.empty:
+                    data_all[ticker] = df_t
+    else:
+        d = d.dropna(subset=["Close"]) if "Close" in d.columns else d.dropna()
+        if not d.empty and len(symbols) > 0:
+            data_all[symbols[0]] = d
 
-except Exception:
-    st.error(traceback.format_exc())
-    st.stop()
+    return data_all
+
+
+
+
 
 def mark_premarket(df):
     if not isinstance(df, pd.DataFrame):
@@ -790,7 +787,6 @@ render_list("Top Momentum ↑", gainers)
 render_list("Top Breakdown ↓", losers)
 
 st.sidebar.markdown("---")
-st.stop() 
   
 @st.cache_data(ttl=120)
 def load_multi_exchange(symbol, period, interval):
