@@ -1019,13 +1019,13 @@ def compute_vwap(df):
 
         for session in ["RTH", "PREMARKET", "AFTERHOURS"]:
 
-            mask = (df.index.date == date) & (df["Session"] == session)
+            session_df = day_df[day_df["Session"] == session]
 
-            if mask.sum() == 0:
+            if session_df.empty:
                 continue
 
-            vol = df.loc[mask, "Volume"]
-            tp_s = tp[mask]
+            vol = session_df["Volume"]
+            tp_s = tp.loc[session_df.index]
 
             vwap = (tp_s * vol).cumsum() / vol.cumsum()
 
@@ -1035,7 +1035,7 @@ def compute_vwap(df):
                 "AFTERHOURS": "VWAP_AH"
             }[session]
 
-            df.loc[mask, col] = vwap
+            df.loc[session_df.index, col] = vwap
 
     return df
 
