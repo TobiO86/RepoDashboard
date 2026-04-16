@@ -1016,8 +1016,8 @@ def compute_vwap_suite(df):
     pv_rth = tp * vol_rth
 
     df["VWAP_RTH"] = (
-        pd.Series(pv_rth).groupby(df.index.date).cumsum() /
-        pd.Series(vol_rth).groupby(df.index.date).cumsum().replace(0, np.nan)
+        pd.Series(pv_rth, index=df.index).groupby(df.index.date).cumsum() /
+        pd.Series(vol_rth, index=df.index).groupby(df.index.date).cumsum().replace(0, np.nan)
     )
 
     # --- PRE ---
@@ -1025,8 +1025,8 @@ def compute_vwap_suite(df):
     pv_pre = tp * vol_pre
 
     df["VWAP_PRE"] = (
-        pd.Series(pv_pre).groupby(df.index.date).cumsum() /
-        pd.Series(vol_pre).groupby(df.index.date).cumsum().replace(0, np.nan)
+        pd.Series(pv_pre, index=df.index).groupby(df.index.date).cumsum() /
+        pd.Series(vol_pre, index=df.index).groupby(df.index.date).cumsum().replace(0, np.nan)
     )
 
     # --- AH ---
@@ -1034,10 +1034,9 @@ def compute_vwap_suite(df):
     pv_ah = tp * vol_ah
 
     df["VWAP_AH"] = (
-        pd.Series(pv_ah).groupby(df.index.date).cumsum() /
-        pd.Series(vol_ah).groupby(df.index.date).cumsum().replace(0, np.nan)
+        pd.Series(pv_ah, index=df.index).groupby(df.index.date).cumsum() /
+        pd.Series(vol_ah, index=df.index).groupby(df.index.date).cumsum().replace(0, np.nan)
     )
-
     return df
 
 df = compute_vwap_suite(df)
