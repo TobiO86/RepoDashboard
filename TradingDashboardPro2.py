@@ -897,10 +897,32 @@ if df.empty:
     st.warning("Keine Daten verfügbar")
     st.stop()
 
-# Session absichern
-if "Session" not in df.columns:
-    df["Session"] = "RTH"
+def add_session_column(df):
+    df = df.copy()
 
+    if not isinstance(df.index, pd.DatetimeIndex):
+        df.index = pd.to_datetime(df.index, errors="coerce")
+
+    if df.index.tz is None:
+        df.index = df.index.tz_localize("UTC")
+
+    df.index = df.index.tz_convert("America/New_York")
+
+    times = df.index.time
+
+    df["Session"] = np.where(
+        (times >= time(4, 0)) & (times < time(9, 30)),
+        "PREMARKET",
+        np.where(
+            (times >= time(16, 0)) & (times < time(20, 0)),
+            "AFTERHOURS",
+            "RTH"
+        )
+    )
+
+    return df
+
+df = add_session_column(df)
 # =========================================================
 # 🔹 2. BASIC CLEANUP
 # =========================================================
