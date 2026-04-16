@@ -1006,8 +1006,12 @@ df["Vol_Avg"] = df["Volume"].rolling(20, min_periods=5).mean()
 # 🔹 6. VWAP SUITE (CLEAN)
 # =========================================================
 
-def compute_vwap(df):
+def compute_vwap_suite(df):
     df = df.copy()
+
+    # saubere Basis
+    if not isinstance(df.index, pd.DatetimeIndex):
+        df.index = pd.to_datetime(df.index, errors="coerce")
 
     tp = (df["High"] + df["Low"] + df["Close"]) / 3
 
@@ -1015,31 +1019,30 @@ def compute_vwap(df):
     df["VWAP_PRE"] = np.nan
     df["VWAP_AH"] = np.nan
 
-    for date, day_df in df.groupby(df.index.date):
+    # pro Tag und pro Session separat rechnen
+    for _, day_df in df.groupby(df.index.date):
 
-        for session in ["RTH", "PREMARKET", "AFTERHOURS"]:
-
-            session_df = day_df[day_df["Session"] == session]
+        for session_name, target_col in [
+            ("RTH", "VWAP_RTH"),
+            ("PREMARKET", "VWAP_PRE"),
+            ("AFTERHOURS", "VWAP_AH"),
+        ]:
+            session_df = day_df[day_df["Session"] == session_name]
 
             if session_df.empty:
                 continue
 
-            vol = session_df["Volume"]
-            tp_s = tp.loc[session_df.index]
+            session_tp = tp.loc[session_df.index]
+            session_vol = session_df["Volume"].fillna(0)
 
-            vwap = (tp_s * vol).cumsum() / vol.cumsum()
+            cum_pv = (session_tp * session_vol).cumsum()
+            cum_vol = session_vol.cumsum().replace(0, np.nan)
 
-            col = {
-                "RTH": "VWAP_RTH",
-                "PREMARKET": "VWAP_PRE",
-                "AFTERHOURS": "VWAP_AH"
-            }[session]
-
-            df.loc[session_df.index, col] = vwap
+            df.loc[session_df.index, target_col] = cum_pv / cum_vol
 
     return df
 
-df = compute_vwap(df)
+df = compute_vwap_suite(df)
 
 # =========================================================
 # 🔹 7. VWAP BANDS
