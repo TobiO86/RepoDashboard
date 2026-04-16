@@ -1006,40 +1006,40 @@ df["Vol_Avg"] = df["Volume"].rolling(20, min_periods=5).mean()
 # 🔹 6. VWAP SUITE (CLEAN)
 # =========================================================
 
-def compute_vwap_suite(df):
+def compute_vwap(df):
     df = df.copy()
 
     tp = (df["High"] + df["Low"] + df["Close"]) / 3
 
-    # --- RTH ---
-    vol_rth = np.where(df["Session"] == "RTH", df["Volume"], 0)
-    pv_rth = tp * vol_rth
+    df["VWAP_RTH"] = np.nan
+    df["VWAP_PRE"] = np.nan
+    df["VWAP_AH"] = np.nan
 
-    df["VWAP_RTH"] = (
-        pd.Series(pv_rth, index=df.index).groupby(df.index.date).cumsum() /
-        pd.Series(vol_rth, index=df.index).groupby(df.index.date).cumsum().replace(0, np.nan)
-    )
+    for date, day_df in df.groupby(df.index.date):
 
-    # --- PRE ---
-    vol_pre = np.where(df["Session"] == "PREMARKET", df["Volume"], 0)
-    pv_pre = tp * vol_pre
+        for session in ["RTH", "PREMARKET", "AFTERHOURS"]:
 
-    df["VWAP_PRE"] = (
-        pd.Series(pv_pre, index=df.index).groupby(df.index.date).cumsum() /
-        pd.Series(vol_pre, index=df.index).groupby(df.index.date).cumsum().replace(0, np.nan)
-    )
+            mask = (df.index.date == date) & (df["Session"] == session)
 
-    # --- AH ---
-    vol_ah = np.where(df["Session"] == "AFTERHOURS", df["Volume"], 0)
-    pv_ah = tp * vol_ah
+            if mask.sum() == 0:
+                continue
 
-    df["VWAP_AH"] = (
-        pd.Series(pv_ah, index=df.index).groupby(df.index.date).cumsum() /
-        pd.Series(vol_ah, index=df.index).groupby(df.index.date).cumsum().replace(0, np.nan)
-    )
+            vol = df.loc[mask, "Volume"]
+            tp_s = tp[mask]
+
+            vwap = (tp_s * vol).cumsum() / vol.cumsum()
+
+            col = {
+                "RTH": "VWAP_RTH",
+                "PREMARKET": "VWAP_PRE",
+                "AFTERHOURS": "VWAP_AH"
+            }[session]
+
+            df.loc[mask, col] = vwap
+
     return df
 
-df = compute_vwap_suite(df)
+df = compute_vwap(df)
 
 # =========================================================
 # 🔹 7. VWAP BANDS
