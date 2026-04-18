@@ -1835,13 +1835,13 @@ col1, col2, col3 = st.columns(3)
 
 col1.metric(
     label=f"{display_name} (RTH){eu_display}",
-    value=f"${current_price:.2f}"
+    value=f"${current_price:.2f}",
     delta=f"{delta_price:+.2f} ({delta_percent:+.2f}%)"
 )
 
 col2.metric(
     label="Current Price",
-    value=f"${last_rth_price:.2f}", 
+    value=f"${last_rth_price:.2f}"
 )
 
 col3.metric("VWAP", f"${vwap_last:.2f}")       
