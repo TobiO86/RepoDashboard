@@ -783,6 +783,30 @@ except Exception as e:
 render_list("Top Momentum ↑", gainers)
 render_list("Top Breakdown ↓", losers)
 
+st.sidebar.markdown("---")
+st.sidebar.subheader("🔔 Gespeicherte Preisalarme")
+
+saved_alerts = load_alerts_sql()
+
+if not saved_alerts:
+    st.sidebar.caption("Keine gespeicherten Alarme")
+else:
+    for ticker, levels in saved_alerts.items():
+        above = levels.get("above", 0)
+        below = levels.get("below", 0)
+
+        text_parts = []
+
+        if above and above > 0:
+            text_parts.append(f"≥ {above}")
+        if below and below > 0:
+            text_parts.append(f"≤ {below}")
+
+        alert_text = " | ".join(text_parts) if text_parts else "keine Levels"
+
+        st.sidebar.write(f"**{ticker}**")
+        st.sidebar.caption(alert_text)
+
 if st.sidebar.button("♻️ Full Reset"):
     st.cache_data.clear()
     st.session_state.clear()
@@ -1834,13 +1858,13 @@ display_name = f"{name} ({symbol})" if name != symbol else symbol
 col1, col2, col3 = st.columns(3)
 
 col1.metric(
-    label=f"{display_name} (RTH){eu_display}",
+    label="Current Price",
     value=f"${current_price:.2f}",
     delta=f"{delta_price:+.2f} ({delta_percent:+.2f}%)"
 )
 
 col2.metric(
-    label="Current Price",
+    label=f"{display_name} (RTH){eu_display}",    
     value=f"${last_rth_price:.2f}"
 )
 
