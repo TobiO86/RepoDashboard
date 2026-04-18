@@ -1434,187 +1434,11 @@ for i in range(start, len(df)):
 
     elif short_score > long_score and delta <= -DELTA_THRESHOLD:
         df.at[df.index[i], "ShortSignal"] = True
-        
-
-df["date"] = df.index.date
-
-df["Daily_High"] = df["High"].rolling("1D").max()
-df["Daily_Low"] = df["Low"].rolling("1D").min()
-
-
-start = max(2, len(df) - 100)
-
-for i in range(start, len(df)):
-    prev = df.iloc[i-1]
-    curr = df.iloc[i]
-
-    vwap = curr["VWAP_RTH"]
-
-    score_long = 0
-    score_short = 0
-
-    weights = {
-        "sweep": 2,
-        "vwap": 2,
-        "volume": 1.5,
-        "trend": 2,
-        "delta": 1,
-        "confirmation": 2,
-        "mtf": 1.5,
-        "sellnews": 2
-    }
-
-    # ---------- LONG ----------
-    if prev["sweep_low"]:
-        score_long += weights["sweep"]
-
-    if curr["Close"] > vwap:
-        score_long += weights["vwap"]
-
-    if curr["vol_spike"]:
-        score_long += weights["volume"]
-
-    if bias_5m == "bull":
-        score_long += weights["trend"]
-
-    if bias_15m == "bull":
-        score_long += weights["mtf"]
-
-    if curr["delta"] > 0:
-        score_long += weights["delta"]
-
-    if prev["sweep_low"] and curr["Close"] > vwap:
-        score_long += weights["confirmation"]
-
-    if df["SellNewsLong"].iloc[i]:
-        score_long += weights["sellnews"]
-
-    # ---------- SHORT ----------
-    if prev["sweep_high"]:
-        score_short += weights["sweep"]
-
-    if curr["Close"] < vwap:
-        score_short += weights["vwap"]
-
-    if curr["vol_spike"]:
-        score_short += weights["volume"]
-
-    if bias_5m == "bear":
-        score_short += weights["trend"]
-
-    if bias_15m == "bear":
-        score_short += weights["mtf"]
-
-    if curr["delta"] < 0:
-        score_short += weights["delta"]
-
-    if prev["sweep_high"] and curr["Close"] < vwap:
-        score_short += weights["confirmation"]
-
-    if df["SellNewsShort"].iloc[i]:
-        score_short += weights["sellnews"]
-
-    regime = df["MarketRegime"].iloc[i]
-
-    # RANGE Boost
-    if regime == "RANGE":
-        if curr["Close"] > curr["VWAP_upper2"]:
-            score_short += 2
-        if curr["Close"] < curr["VWAP_lower2"]:
-            score_long += 2
-
-    # TREND Boost
-    if regime == "TREND":
-        if curr["Close"] > vwap:
-            score_long += 1
-        if curr["Close"] < vwap:
-            score_short += 1
-
-    # ATR Filter
-    if curr["ATR_pct"] > 0.005:
-        if curr["Close"] > vwap:
-            score_long += 1
-        else:
-            score_short += 1
-
-    # KC
-    if curr["KC_Below"]:
-        score_short += 1
-
-    if curr["KC_Above"]:
-        score_long += 1
-
-    # Trend Strength
-    if curr["Trend_Strong"] and curr["Trend_Long"]:
-        score_long += 2
-
-    if curr["Trend_Strong"] and curr["Trend_Short"]:
-        score_short += 2
-
-    # Extras
-    if df["VWAP_Reclaim_Long"].iloc[i]:
-        score_long += 2
-
-    if df["VWAP_Reclaim_Short"].iloc[i]:
-        score_short += 2
-
-    if curr["VWAP_Extreme_Low"]:
-        score_long += 2
-
-    if curr["VWAP_Extreme_High"]:
-        score_short += 2
-
-    if curr["HH"]:
-        score_long += 1
-
-    if curr["LL"]:
-        score_short += 1
-
-    score_long = min(score_long, 10)
-    score_short = min(score_short, 10)
-
-    df.at[df.index[i], "LongScore"] = score_long
-    df.at[df.index[i], "ShortScore"] = score_short   
-    
-df["ScoreDelta"] = df["LongScore"] - df["ShortScore"]
-
-df["LongSignal"] = False
-df["ShortSignal"] = False
-
-start = max(2, len(df) - 100)
-
-MIN_SCORE = 5
-DELTA_THRESHOLD = 2
-
-for i in range(start, len(df)):
-
-    long_score = df["LongScore"].iloc[i]
-    short_score = df["ShortScore"].iloc[i]
-    delta = long_score - short_score
-
-    if i > start:
-        prev_long = df["LongSignal"].iloc[i-1]
-        prev_short = df["ShortSignal"].iloc[i-1]
-
-        # 🔁 Signal bleibt aktiv
-        if prev_long and long_score >= short_score:
-            df.at[df.index[i], "LongSignal"] = True
-            continue
-
-        if prev_short and short_score >= long_score:
-            df.at[df.index[i], "ShortSignal"] = True
-            continue
-
-    # ❌ Mindestqualität
-    if max(long_score, short_score) < MIN_SCORE:
-        continue
-
-    # 🎯 Entscheidung
-    if long_score > short_score and delta >= DELTA_THRESHOLD:
-        df.at[df.index[i], "LongSignal"] = True
-
-    elif short_score > long_score and delta <= -DELTA_THRESHOLD:
-        df.at[df.index[i], "ShortSignal"] = True    
+ 
+ 
+df["Date"] = df.index.date
+df["Daily_High"] = df.groupby("Date")["High"].transform("max")
+df["Daily_Low"] = df.groupby("Date")["Low"].transform("min")      
         
 def get_dynamic_rr(df, i):
     long_score = df["LongScore"].iloc[i]
@@ -1625,6 +1449,7 @@ def get_dynamic_rr(df, i):
     trend_strong = bool(df["Trend_Strong"].iloc[i]) if "Trend_Strong" in df.columns else False
     trend_long = bool(df["Trend_Long"].iloc[i]) if "Trend_Long" in df.columns else False
     trend_short = bool(df["Trend_Short"].iloc[i]) if "Trend_Short" in df.columns else False
+    atr_pct = df["ATR_pct"].iloc[i] if "ATR_pct" in df.columns else np.nan
 
     # Basis-RR nach Setup-Qualität
     if score >= 9:
@@ -1641,6 +1466,13 @@ def get_dynamic_rr(df, i):
     if df["ShortSignal"].iloc[i] and trend_strong and trend_short:
         rr += 0.2
 
+    # Volatilität leicht berücksichtigen
+    if pd.notna(atr_pct):
+        if atr_pct > 0.01:
+            rr += 0.2
+        elif atr_pct < 0.003:
+            rr -= 0.2
+
     # In Range lieber konservativer
     if regime == "RANGE":
         rr -= 0.3
@@ -1648,6 +1480,26 @@ def get_dynamic_rr(df, i):
     # Harte Grenzen
     rr = max(1.2, min(rr, 2.5))
     return rr
+
+
+def get_min_rr_for_entry(df, i):
+    score = max(df["LongScore"].iloc[i], df["ShortScore"].iloc[i])
+    regime = df["MarketRegime"].iloc[i] if "MarketRegime" in df.columns else "TREND"
+
+    if regime == "RANGE":
+        return 1.2
+    elif score >= 9:
+        return 1.8
+    elif score >= 7:
+        return 1.5
+    else:
+        return 1.3
+
+
+def safe_prev_stop(prev_sl, new_sl, is_long=True):
+    if np.isnan(prev_sl):
+        return new_sl
+    return max(prev_sl, new_sl) if is_long else min(prev_sl, new_sl)
         
 def calculate_sl_tp(df, i):
     price = df["Close"].iloc[i]
@@ -1662,6 +1514,7 @@ def calculate_sl_tp(df, i):
     min_risk = atr * 0.5
     max_risk = atr * 3
 
+    # ---------- LONG ----------
     if df["LongSignal"].iloc[i]:
         swing_low = df["Low"].iloc[max(0, i-10):i].min()
 
@@ -1680,6 +1533,7 @@ def calculate_sl_tp(df, i):
         tp = price + risk * rr_target
         return sl, tp
 
+    # ---------- SHORT ----------
     elif df["ShortSignal"].iloc[i]:
         swing_high = df["High"].iloc[max(0, i-10):i].max()
 
@@ -1704,6 +1558,7 @@ def calculate_sl_tp(df, i):
 # -----------------------
 # APPLY SL/TP + TRAILING
 # -----------------------
+
 df["SL"] = np.nan
 df["TP"] = np.nan
 
@@ -1722,25 +1577,25 @@ for i in range(1, len(df)):
             df.at[df.index[i], "SL"] = sl
             df.at[df.index[i], "TP"] = tp
 
-        # LONG trailing
-        if df["LongSignal"].iloc[i-1]:
-            prev_sl = df["SL"].iloc[i-1]
-            new_sl = price - atr * 1.2
+    # 🔁 Trailing Stop LONG
+    if df["LongSignal"].iloc[i-1]:
+        prev_sl = df["SL"].iloc[i-1]
+        new_sl = price - atr * 1.2
+        df.at[df.index[i], "SL"] = safe_prev_stop(prev_sl, new_sl, is_long=True)
 
-            if not np.isnan(prev_sl):
-                df.at[df.index[i], "SL"] = max(prev_sl, new_sl)
-            else:
-                df.at[df.index[i], "SL"] = new_sl
+        # TP vom Vortag weiterziehen / beibehalten
+        if i-1 >= 0 and "TP" in df.columns:
+            df.at[df.index[i], "TP"] = df["TP"].iloc[i-1]
 
-        # SHORT trailing
-        if df["ShortSignal"].iloc[i-1]:
-            prev_sl = df["SL"].iloc[i-1]
-            new_sl = price + atr * 1.2
+    # 🔁 Trailing Stop SHORT
+    if df["ShortSignal"].iloc[i-1]:
+        prev_sl = df["SL"].iloc[i-1]
+        new_sl = price + atr * 1.2
+        df.at[df.index[i], "SL"] = safe_prev_stop(prev_sl, new_sl, is_long=False)
 
-            if not np.isnan(prev_sl):
-                df.at[df.index[i], "SL"] = min(prev_sl, new_sl)
-            else:
-                df.at[df.index[i], "SL"] = new_sl
+        # TP vom Vortag weiterziehen / beibehalten
+        if i-1 >= 0 and "TP" in df.columns:
+            df.at[df.index[i], "TP"] = df["TP"].iloc[i-1]
 
 df["Date"] = df.index.date
 
@@ -1783,6 +1638,10 @@ def get_min_rr_for_entry(df, i):
         return 1.5
     return 1.3
 
+MIN_SCORE = 5
+DELTA_THRESHOLD = 2
+VOLUME_FACTOR = 1.2
+
 def get_entry_signal(df, i, bias):
     price = df["Close"].iloc[i]
     vwap = df["VWAP_RTH"].iloc[i]
@@ -1803,8 +1662,8 @@ def get_entry_signal(df, i, bias):
     if np.isnan(sl) or np.isnan(tp):
         return None
 
-    min_rr = get_min_rr_for_entry(df, i)
     rr = abs((tp - price) / (price - sl)) if price != sl else 0
+    min_rr = get_min_rr_for_entry(df, i)
 
     # 🚀 LONG
     if (
@@ -1866,10 +1725,24 @@ if df_fast.empty or "Close" not in df_fast.columns:
 
 current_price = last_valid(df_fast["Close"])
 
-# 🟢 RTH Preis
-rth_df = df[df["Session"] == "RTH"]
-last_rth_price = rth_df["Close"].iloc[-1] if not rth_df.empty else df["Close"].iloc[-1]
+# 🔥 RTH aus FAST DATA holen (korrekt!)
+df_fast_rth = df_fast.copy()
 
+# Zeitzone sicherstellen
+if df_fast_rth.index.tz is None:
+    df_fast_rth.index = df_fast_rth.index.tz_localize("UTC")
+
+df_fast_rth.index = df_fast_rth.index.tz_convert("America/New_York")
+
+times = df_fast_rth.index.time
+
+rth_mask = (times >= time(9,30)) & (times < time(16,0))
+df_fast_rth = df_fast_rth[rth_mask]
+
+if not df_fast_rth.empty:
+    last_rth_price = df_fast_rth["Close"].iloc[-1]
+else:
+    last_rth_price = current_price
 delta_price = current_price - last_rth_price
 delta_percent = (delta_price / last_rth_price) * 100 if last_rth_price != 0 else 0
 
