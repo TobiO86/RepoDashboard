@@ -1791,7 +1791,7 @@ current_price = last_valid(df_fast["Close"])
 rth_df = df[df["Session"] == "RTH"]
 last_rth_price = rth_df["Close"].iloc[-1] if not rth_df.empty else df["Close"].iloc[-1]
 
-delta_price = last_rth_price - current_price
+delta_price = current_price - last_rth_price
 delta_percent = (delta_price / last_rth_price) * 100 if last_rth_price != 0 else 0
 
 # 🌍 EU Preis
@@ -1836,12 +1836,12 @@ col1, col2, col3 = st.columns(3)
 col1.metric(
     label=f"{display_name} (RTH){eu_display}",
     value=f"${current_price:.2f}"
+    delta=f"{delta_price:+.2f} ({delta_percent:+.2f}%)"
 )
 
 col2.metric(
     label="Current Price",
-    value=f"${last_rth_price:.2f}",
-    delta=f"{delta_price:+.2f} ({delta_percent:+.2f}%)"
+    value=f"${last_rth_price:.2f}", 
 )
 
 col3.metric("VWAP", f"${vwap_last:.2f}")       
