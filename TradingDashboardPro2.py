@@ -686,8 +686,18 @@ def process_symbol(s, data_all):
     if pd.isna(sl) or pd.isna(tp) or price_i == sl:
         return None
 
+    # Risk/Reward
+    #👉 A+ Setup: RR ≥ 2.0 – 3.0 + Score >= 8
+    #👍 Normales Setup: 👉 RR ≥ 1.5 Score 5-7
     rr = abs(tp - price_i) / abs(price_i - sl)
-    signal_ok = rr >= 1.5
+    if total_score >= 8:
+        min_rr = 2.0
+    elif total_score >= 6:
+        min_rr = 1.5
+    else:
+        return None
+
+    signal_ok = rr >= min_rr
 
     return {
         "symbol": s,
@@ -698,7 +708,8 @@ def process_symbol(s, data_all):
         "rr": rr,
         "score": total_score,
         "delta": long_score - short_score,
-        "signal_ok": signal_ok
+        "signal_ok": signal_ok,
+        "timestamp": df_s.index[-1]
     }
 
 def scan_market_core(symbols, data_all):
@@ -723,7 +734,7 @@ def scan_market(limit=50):
         if not r["signal_ok"]:
             continue
 
-        signal_id = f"{r['symbol']}_{r['setup']}_{round(r['price'],1)}"
+        signal_id = f"{r['symbol']}_{r['setup']}_{r['timestamp']}"
 
         if "sent_signals" not in st.session_state:
             st.session_state.sent_signals = set()
@@ -1605,7 +1616,40 @@ for i in range(start, len(df)):
     elif short_score > long_score and delta <= -DELTA_THRESHOLD:
         df.at[df.index[i], "ShortSignal"] = True    
         
-def calculate_sl_tp(df, i, rr_target=2):
+def get_dynamic_rr(df, i):
+    long_score = df["LongScore"].iloc[i]
+    short_score = df["ShortScore"].iloc[i]
+    score = max(long_score, short_score)
+
+    regime = df["MarketRegime"].iloc[i] if "MarketRegime" in df.columns else "TREND"
+    trend_strong = bool(df["Trend_Strong"].iloc[i]) if "Trend_Strong" in df.columns else False
+    trend_long = bool(df["Trend_Long"].iloc[i]) if "Trend_Long" in df.columns else False
+    trend_short = bool(df["Trend_Short"].iloc[i]) if "Trend_Short" in df.columns else False
+
+    # Basis-RR nach Setup-Qualität
+    if score >= 9:
+        rr = 2.3
+    elif score >= 7:
+        rr = 1.8
+    else:
+        rr = 1.4
+
+    # Trend-Bonus nur in Signalrichtung
+    if df["LongSignal"].iloc[i] and trend_strong and trend_long:
+        rr += 0.2
+
+    if df["ShortSignal"].iloc[i] and trend_strong and trend_short:
+        rr += 0.2
+
+    # In Range lieber konservativer
+    if regime == "RANGE":
+        rr -= 0.3
+
+    # Harte Grenzen
+    rr = max(1.2, min(rr, 2.5))
+    return rr
+        
+def calculate_sl_tp(df, i):
     price = df["Close"].iloc[i]
     atr = df["ATR"].iloc[i]
     vwap = df["VWAP_RTH"].iloc[i]
@@ -1613,10 +1657,11 @@ def calculate_sl_tp(df, i, rr_target=2):
     if np.isnan(price) or np.isnan(atr) or np.isnan(vwap):
         return np.nan, np.nan
 
+    rr_target = get_dynamic_rr(df, i)
+
     min_risk = atr * 0.5
     max_risk = atr * 3
 
-    # ---------- LONG ----------
     if df["LongSignal"].iloc[i]:
         swing_low = df["Low"].iloc[max(0, i-10):i].min()
 
@@ -1635,7 +1680,6 @@ def calculate_sl_tp(df, i, rr_target=2):
         tp = price + risk * rr_target
         return sl, tp
 
-    # ---------- SHORT ----------
     elif df["ShortSignal"].iloc[i]:
         swing_high = df["High"].iloc[max(0, i-10):i].max()
 
@@ -1673,7 +1717,7 @@ for i in range(1, len(df)):
 
     # 🟢 Neue Trades
     if new_long or new_short:
-        sl, tp = calculate_sl_tp(df, i, rr_target=2)
+        sl, tp = calculate_sl_tp(df, i)
         if not np.isnan(sl):
             df.at[df.index[i], "SL"] = sl
             df.at[df.index[i], "TP"] = tp
@@ -1727,6 +1771,17 @@ def get_smart_signal(df, i):
     else:
         return "NEUTRAL", long_score, short_score, delta
 
+def get_min_rr_for_entry(df, i):
+    score = max(df["LongScore"].iloc[i], df["ShortScore"].iloc[i])
+    regime = df["MarketRegime"].iloc[i]
+
+    if regime == "RANGE":
+        return 1.2
+    if score >= 9:
+        return 1.8
+    if score >= 7:
+        return 1.5
+    return 1.3
 
 def get_entry_signal(df, i, bias):
     price = df["Close"].iloc[i]
@@ -1748,6 +1803,7 @@ def get_entry_signal(df, i, bias):
     if np.isnan(sl) or np.isnan(tp):
         return None
 
+    min_rr = get_min_rr_for_entry(df, i)
     rr = abs((tp - price) / (price - sl)) if price != sl else 0
 
     # 🚀 LONG
@@ -1758,7 +1814,7 @@ def get_entry_signal(df, i, bias):
         price > vwap and
         price > orb_high and
         volume > avg_volume * VOLUME_FACTOR and
-        rr >= MIN_RR
+        rr >= min_rr
     ):
         return {
             "type": "LONG",
@@ -1777,7 +1833,7 @@ def get_entry_signal(df, i, bias):
         price < vwap and
         price < orb_low and
         volume > avg_volume * VOLUME_FACTOR and
-        rr >= MIN_RR
+        rr >= min_rr
     ):
         return {
             "type": "SHORT",
@@ -2558,7 +2614,6 @@ last_short = df["ShortSignal"].iloc[-1] if "ShortSignal" in df.columns else Fals
 
 MIN_SCORE = 5
 DELTA_THRESHOLD = 2
-MIN_RR = 1.5
 VOLUME_FACTOR = 1.2
 
 last_idx = len(df) - 1
