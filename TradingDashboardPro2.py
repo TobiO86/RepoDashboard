@@ -409,6 +409,29 @@ if st.sidebar.button("💾 Alarme speichern"):
         save_alerts_sql(alerts)
         st.sidebar.success("Gespeichert!")    
 
+st.sidebar.markdown("---")
+st.sidebar.subheader("🔔 Gespeicherte Preisalarme")
+
+saved_alerts = load_alerts_sql()
+
+if not saved_alerts:
+    st.sidebar.caption("Keine gespeicherten Alarme")
+else:
+    for ticker, levels in saved_alerts.items():
+        above = levels.get("above", 0)
+        below = levels.get("below", 0)
+
+        text_parts = []
+
+        if above and above > 0:
+            text_parts.append(f"≥ {above}")
+        if below and below > 0:
+            text_parts.append(f"≤ {below}")
+
+        alert_text = " | ".join(text_parts) if text_parts else "keine Levels"
+
+        st.sidebar.write(f"**{ticker}**")
+        st.sidebar.caption(alert_text)
 # =========================================================
 # 🔹 MARKET SCANNER
 # =========================================================
@@ -782,30 +805,6 @@ except Exception as e:
 
 render_list("Top Momentum ↑", gainers)
 render_list("Top Breakdown ↓", losers)
-
-st.sidebar.markdown("---")
-st.sidebar.subheader("🔔 Gespeicherte Preisalarme")
-
-saved_alerts = load_alerts_sql()
-
-if not saved_alerts:
-    st.sidebar.caption("Keine gespeicherten Alarme")
-else:
-    for ticker, levels in saved_alerts.items():
-        above = levels.get("above", 0)
-        below = levels.get("below", 0)
-
-        text_parts = []
-
-        if above and above > 0:
-            text_parts.append(f"≥ {above}")
-        if below and below > 0:
-            text_parts.append(f"≤ {below}")
-
-        alert_text = " | ".join(text_parts) if text_parts else "keine Levels"
-
-        st.sidebar.write(f"**{ticker}**")
-        st.sidebar.caption(alert_text)
 
 if st.sidebar.button("♻️ Full Reset"):
     st.cache_data.clear()
