@@ -43,12 +43,398 @@ def init_db():
         )
     """)
 
+    # Paper Trading Settings
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS paper_settings (
+            key TEXT PRIMARY KEY,
+            value TEXT
+        )
+    """)
+
+    # Offene Positionen
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS paper_positions (
+            ticker TEXT PRIMARY KEY,
+            direction TEXT,
+            qty REAL,
+            entry_price REAL,
+            entry_time TEXT,
+            sl REAL,
+            tp REAL,
+            status TEXT DEFAULT 'OPEN'
+        )
+    """)
+
+    # Geschlossene und offene Trades Historie
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS paper_trades (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            ticker TEXT,
+            direction TEXT,
+            qty REAL,
+            entry_price REAL,
+            entry_time TEXT,
+            exit_price REAL,
+            exit_time TEXT,
+            sl REAL,
+            tp REAL,
+            pnl REAL,
+            pnl_pct REAL,
+            status TEXT,
+            exit_reason TEXT
+        )
+    """)
+
     conn.commit()
     conn.close()
 
 
 # Beim Start einmal ausführen
 init_db()
+
+# =========================================================
+# 🔹 PAPER TRADING DB HELPERS
+# =========================================================
+
+def paper_get_setting(key, default=None):
+    conn = get_conn()
+    c = conn.cursor()
+    c.execute("SELECT value FROM paper_settings WHERE key = ?", (key,))
+    row = c.fetchone()
+    conn.close()
+    return row[0] if row else default
+
+
+def paper_set_setting(key, value):
+    conn = get_conn()
+    c = conn.cursor()
+    c.execute(
+        "INSERT OR REPLACE INTO paper_settings (key, value) VALUES (?, ?)",
+        (key, str(value))
+    )
+    conn.commit()
+    conn.close()
+
+
+def paper_init_defaults():
+    if paper_get_setting("cash") is None:
+        paper_set_setting("cash", 10000)
+    if paper_get_setting("start_cash") is None:
+        paper_set_setting("start_cash", 10000)
+    if paper_get_setting("last_signal_key") is None:
+        paper_set_setting("last_signal_key", "")
+
+
+def paper_reset_account(start_cash=10000):
+    conn = get_conn()
+    c = conn.cursor()
+    c.execute("DELETE FROM paper_positions")
+    c.execute("DELETE FROM paper_trades")
+    c.execute("DELETE FROM paper_settings")
+    conn.commit()
+    conn.close()
+    paper_set_setting("cash", start_cash)
+    paper_set_setting("start_cash", start_cash)
+    paper_set_setting("last_signal_key", "")
+
+
+def paper_get_cash():
+    return float(paper_get_setting("cash", 10000) or 10000)
+
+
+def paper_set_cash(value):
+    paper_set_setting("cash", round(float(value), 2))
+
+
+def paper_get_open_position(ticker):
+    conn = get_conn()
+    query = pd.read_sql_query(
+        "SELECT * FROM paper_positions WHERE ticker = ? AND status = 'OPEN'",
+        conn,
+        params=(ticker,)
+    )
+    conn.close()
+    if query.empty:
+        return None
+    return query.iloc[0].to_dict()
+
+
+def paper_get_open_positions():
+    conn = get_conn()
+    df_pos = pd.read_sql_query(
+        "SELECT * FROM paper_positions WHERE status = 'OPEN' ORDER BY entry_time DESC",
+        conn
+    )
+    conn.close()
+    return df_pos
+
+
+def paper_get_trade_history(limit=50):
+    conn = get_conn()
+    df_trades = pd.read_sql_query(
+        "SELECT * FROM paper_trades ORDER BY id DESC LIMIT ?",
+        conn,
+        params=(limit,)
+    )
+    conn.close()
+    return df_trades
+
+
+def paper_open_position(ticker, direction, qty, entry_price, sl, tp, entry_time):
+    conn = get_conn()
+    c = conn.cursor()
+    c.execute(
+        """
+        INSERT OR REPLACE INTO paper_positions
+        (ticker, direction, qty, entry_price, entry_time, sl, tp, status)
+        VALUES (?, ?, ?, ?, ?, ?, ?, 'OPEN')
+        """,
+        (ticker, direction, qty, entry_price, entry_time, sl, tp)
+    )
+    c.execute(
+        """
+        INSERT INTO paper_trades
+        (ticker, direction, qty, entry_price, entry_time, sl, tp, status)
+        VALUES (?, ?, ?, ?, ?, ?, ?, 'OPEN')
+        """,
+        (ticker, direction, qty, entry_price, entry_time, sl, tp)
+    )
+    conn.commit()
+    conn.close()
+
+
+def paper_close_position(ticker, exit_price, exit_time, exit_reason):
+    pos = paper_get_open_position(ticker)
+    if not pos:
+        return None
+
+    qty = float(pos["qty"])
+    entry_price = float(pos["entry_price"])
+    direction = pos["direction"]
+
+    if direction == "LONG":
+        pnl = (exit_price - entry_price) * qty
+        cash_delta = exit_price * qty
+    else:
+        pnl = (entry_price - exit_price) * qty
+        cash_delta = entry_price * qty + pnl
+
+    pnl_pct = ((exit_price - entry_price) / entry_price * 100) if direction == "LONG" else ((entry_price - exit_price) / entry_price * 100)
+
+    conn = get_conn()
+    c = conn.cursor()
+    c.execute(
+        "UPDATE paper_positions SET status = 'CLOSED' WHERE ticker = ?",
+        (ticker,)
+    )
+    c.execute(
+        """
+        UPDATE paper_trades
+        SET exit_price = ?, exit_time = ?, pnl = ?, pnl_pct = ?, status = 'CLOSED', exit_reason = ?
+        WHERE id = (
+            SELECT id FROM paper_trades
+            WHERE ticker = ? AND status = 'OPEN'
+            ORDER BY id DESC LIMIT 1
+        )
+        """,
+        (exit_price, exit_time, pnl, pnl_pct, exit_reason, ticker)
+    )
+    conn.commit()
+    conn.close()
+
+    paper_set_cash(paper_get_cash() + cash_delta)
+    return {
+        "ticker": ticker,
+        "direction": direction,
+        "pnl": pnl,
+        "pnl_pct": pnl_pct,
+        "exit_reason": exit_reason,
+        "exit_price": exit_price
+    }
+
+
+def paper_manual_open(symbol, signal, current_price, now_str, notify=False):
+    if not signal:
+        return None, "Kein aktives A+ Signal"
+
+    pos = paper_get_open_position(symbol)
+    if pos:
+        return None, f"{symbol}: Position bereits offen"
+
+    cash = paper_get_cash()
+    risk_fraction = float(paper_get_setting("risk_fraction", 0.25) or 0.25)
+    order_value = cash * risk_fraction
+    qty = max(order_value / current_price, 0)
+
+    if qty <= 0:
+        return None, "Ordergröße ist 0"
+
+    if signal["type"] == "LONG":
+        required_cash = qty * current_price
+        if required_cash > cash:
+            return None, "Nicht genug Cash für LONG"
+        paper_set_cash(cash - required_cash)
+
+    paper_open_position(
+        ticker=symbol,
+        direction=signal["type"],
+        qty=qty,
+        entry_price=current_price,
+        sl=float(signal["sl"]),
+        tp=float(signal["tp"]),
+        entry_time=now_str
+    )
+
+    info = {
+        "ticker": symbol,
+        "direction": signal["type"],
+        "qty": qty,
+        "entry_price": current_price,
+        "sl": float(signal["sl"]),
+        "tp": float(signal["tp"])
+    }
+
+    if notify:
+        send_telegram(
+            f"🧪 PAPER MANUAL {signal['type']} {symbol}\n"
+            f"Entry: {current_price:.2f}\n"
+            f"SL: {float(signal['sl']):.2f}\n"
+            f"TP: {float(signal['tp']):.2f}\n"
+            f"Qty: {qty:.4f}"
+        )
+
+    return info, None
+
+
+def paper_manual_close(symbol, current_price, now_str, reason="MANUAL", notify=False):
+    pos = paper_get_open_position(symbol)
+    if not pos:
+        return None, f"{symbol}: Keine offene Position"
+
+    info = paper_close_position(symbol, current_price, now_str, reason)
+
+    if info and notify:
+        send_telegram(
+            f"🧪 PAPER MANUAL CLOSE {symbol}\n"
+            f"Exit: {current_price:.2f}\n"
+            f"PnL: {info['pnl']:+.2f} ({info['pnl_pct']:+.2f}%)\n"
+            f"Reason: {reason}"
+        )
+
+    return info, None
+
+
+def paper_account_snapshot(live_prices=None):
+    live_prices = live_prices or {}
+    cash = paper_get_cash()
+    start_cash = float(paper_get_setting("start_cash", 10000) or 10000)
+    positions = paper_get_open_positions()
+
+    market_value = 0.0
+    unrealized = 0.0
+
+    if not positions.empty:
+        for _, row in positions.iterrows():
+            ticker = row["ticker"]
+            direction = row["direction"]
+            qty = float(row["qty"])
+            entry = float(row["entry_price"])
+            live = float(live_prices.get(ticker, entry))
+
+            if direction == "LONG":
+                market_value += live * qty
+                unrealized += (live - entry) * qty
+            else:
+                unrealized += (entry - live) * qty
+                market_value += entry * qty + (entry - live) * qty
+
+    equity = cash + market_value
+    total_pnl = equity - start_cash
+    total_pnl_pct = (total_pnl / start_cash * 100) if start_cash else 0
+
+    return {
+        "cash": cash,
+        "market_value": market_value,
+        "equity": equity,
+        "unrealized": unrealized,
+        "total_pnl": total_pnl,
+        "total_pnl_pct": total_pnl_pct
+    }
+
+
+def paper_process_symbol(symbol, signal, current_price, now_str, auto_enabled=True, notify=False):
+    pos = paper_get_open_position(symbol)
+    closed_info = None
+    opened_info = None
+
+    if pos:
+        direction = pos["direction"]
+        sl = float(pos["sl"])
+        tp = float(pos["tp"])
+
+        if direction == "LONG":
+            if current_price <= sl:
+                closed_info = paper_close_position(symbol, current_price, now_str, "SL")
+            elif current_price >= tp:
+                closed_info = paper_close_position(symbol, current_price, now_str, "TP")
+            elif signal and signal.get("type") == "SHORT":
+                closed_info = paper_close_position(symbol, current_price, now_str, "REVERSE")
+
+        elif direction == "SHORT":
+            if current_price >= sl:
+                closed_info = paper_close_position(symbol, current_price, now_str, "SL")
+            elif current_price <= tp:
+                closed_info = paper_close_position(symbol, current_price, now_str, "TP")
+            elif signal and signal.get("type") == "LONG":
+                closed_info = paper_close_position(symbol, current_price, now_str, "REVERSE")
+
+    pos = paper_get_open_position(symbol)
+
+    if auto_enabled and signal and not pos:
+        signal_key = f"{symbol}_{signal['type']}_{df.index[-1]}"
+        last_signal_key = paper_get_setting("last_signal_key", "")
+
+        if signal_key != last_signal_key:
+            cash = paper_get_cash()
+            risk_fraction = float(paper_get_setting("risk_fraction", 0.25) or 0.25)
+            order_value = cash * risk_fraction
+            qty = max(order_value / current_price, 0)
+
+            if qty > 0:
+                if signal["type"] == "LONG":
+                    paper_set_cash(cash - (qty * current_price))
+                paper_open_position(
+                    ticker=symbol,
+                    direction=signal["type"],
+                    qty=qty,
+                    entry_price=current_price,
+                    sl=float(signal["sl"]),
+                    tp=float(signal["tp"]),
+                    entry_time=now_str
+                )
+                paper_set_setting("last_signal_key", signal_key)
+                opened_info = {
+                    "ticker": symbol,
+                    "direction": signal["type"],
+                    "qty": qty,
+                    "entry_price": current_price,
+                    "sl": float(signal["sl"]),
+                    "tp": float(signal["tp"])
+                }
+
+                if notify:
+                    send_telegram(
+                        f"🧪 PAPER {signal['type']} {symbol}\n"
+                        f"Entry: {current_price:.2f}\n"
+                        f"SL: {float(signal['sl']):.2f}\n"
+                        f"TP: {float(signal['tp']):.2f}\n"
+                        f"Qty: {qty:.4f}"
+                    )
+
+    return opened_info, closed_info
+
+
+paper_init_defaults()
 
 def get_market_session():
     et = pytz.timezone("America/New_York")
@@ -431,6 +817,61 @@ else:
 
         st.sidebar.write(f"**{ticker}**")
         st.sidebar.caption(alert_text)
+
+# =========================================================
+# 🔹 PAPER TRADING SIDEBAR
+# =========================================================
+
+st.sidebar.markdown("---")
+st.sidebar.subheader("🧪 Paper Trading")
+
+current_start_cash = float(paper_get_setting("start_cash", 10000) or 10000)
+current_risk_fraction = float(paper_get_setting("risk_fraction", 0.25) or 0.25)
+current_auto_mode = (paper_get_setting("auto_mode", "0") == "1")
+current_paper_telegram = (paper_get_setting("paper_telegram", "0") == "1")
+
+paper_start_cash_input = st.sidebar.number_input(
+    "Startkapital",
+    min_value=1000.0,
+    value=current_start_cash,
+    step=1000.0,
+    key="paper_start_cash_input"
+)
+
+paper_risk_fraction_input = st.sidebar.slider(
+    "Einsatz pro Trade (% vom Cash)",
+    min_value=5,
+    max_value=100,
+    value=int(current_risk_fraction * 100),
+    step=5,
+    key="paper_risk_fraction_input"
+)
+
+paper_auto_mode = st.sidebar.checkbox(
+    "Auto-Trade bei A+ Signal",
+    value=current_auto_mode,
+    key="paper_auto_mode"
+)
+
+paper_telegram = st.sidebar.checkbox(
+    "Telegram für Paper-Trades",
+    value=current_paper_telegram,
+    key="paper_telegram"
+)
+
+if st.sidebar.button("💾 Paper Settings speichern"):
+    paper_set_setting("start_cash", paper_start_cash_input)
+    if paper_get_setting("cash") is None:
+        paper_set_setting("cash", paper_start_cash_input)
+    paper_set_setting("risk_fraction", paper_risk_fraction_input / 100)
+    paper_set_setting("auto_mode", "1" if paper_auto_mode else "0")
+    paper_set_setting("paper_telegram", "1" if paper_telegram else "0")
+    st.sidebar.success("Paper Settings gespeichert")
+
+if st.sidebar.button("🗑️ Paper Konto reset"):
+    paper_reset_account(paper_start_cash_input)
+    st.sidebar.success("Paper Konto zurückgesetzt")
+    st.rerun()
 # =========================================================
 # 🔹 MARKET SCANNER
 # =========================================================
@@ -1746,6 +2187,25 @@ else:
 delta_price = current_price - last_rth_price
 delta_percent = (delta_price / last_rth_price) * 100 if last_rth_price != 0 else 0
 
+# =========================================================
+# 🔹 PAPER TRADING RUNTIME
+# =========================================================
+
+paper_opened = None
+paper_closed = None
+paper_auto_enabled = (paper_get_setting("auto_mode", "0") == "1")
+paper_notify = (paper_get_setting("paper_telegram", "0") == "1")
+now_str = datetime.now(pytz.timezone("America/New_York")).strftime("%Y-%m-%d %H:%M:%S %Z")
+
+paper_opened, paper_closed = paper_process_symbol(
+    symbol=symbol,
+    signal=signal,
+    current_price=float(current_price),
+    now_str=now_str,
+    auto_enabled=paper_auto_enabled,
+    notify=paper_notify
+)
+
 # 🌍 EU Preis
 eu_price, eu_symbol = load_global_prices(symbol)
 eu_display = f" | EU: ${eu_price:.2f}" if not np.isnan(eu_price) else ""
@@ -1821,6 +2281,38 @@ col14, col15, col16 = st.columns(3)
 col14.metric("EMA200", round(df["EMA200"].iloc[-1], 2))
 col15.metric("ATR", round(df["ATR"].iloc[-1], 2))
 col16.metric("ADX", round(df["ADX"].iloc[-1], 2))
+
+# =========================================================
+# 🔹 PAPER TRADING DASHBOARD
+# =========================================================
+
+paper_snapshot = paper_account_snapshot({symbol: float(current_price)})
+open_pos = paper_get_open_position(symbol)
+
+pc1, pc2, pc3, pc4 = st.columns(4)
+pc1.metric("Paper Cash", f"${paper_snapshot['cash']:.2f}")
+pc2.metric("Paper Equity", f"${paper_snapshot['equity']:.2f}", delta=f"{paper_snapshot['total_pnl']:+.2f}")
+pc3.metric("Open PnL", f"${paper_snapshot['unrealized']:.2f}")
+pc4.metric("Gesamt PnL %", f"{paper_snapshot['total_pnl_pct']:+.2f}%")
+
+if paper_opened:
+    st.success(
+        f"🧪 PAPER {paper_opened['direction']} eröffnet | {paper_opened['ticker']} | "
+        f"Entry {paper_opened['entry_price']:.2f} | SL {paper_opened['sl']:.2f} | TP {paper_opened['tp']:.2f}"
+    )
+
+if paper_closed:
+    pnl_color = "✅" if paper_closed["pnl"] >= 0 else "❌"
+    st.info(
+        f"{pnl_color} PAPER {paper_closed['direction']} geschlossen | {paper_closed['ticker']} | "
+        f"Exit {paper_closed['exit_price']:.2f} | PnL {paper_closed['pnl']:+.2f} ({paper_closed['pnl_pct']:+.2f}%) | {paper_closed['exit_reason']}"
+    )
+
+if open_pos:
+    st.caption(
+        f"Offene Position {open_pos['direction']} | Qty {float(open_pos['qty']):.4f} | "
+        f"Entry {float(open_pos['entry_price']):.2f} | SL {float(open_pos['sl']):.2f} | TP {float(open_pos['tp']):.2f}"
+    )
 
 # Trend Score
 score = 0
@@ -2587,4 +3079,73 @@ if signal:
             f"RR: {signal['rr']:.2f}"
         )
 else:
-    st.info("⚖️ NO A+ SETUP")            
+    st.info("⚖️ NO A+ SETUP")
+
+# =========================================================
+# 🔹 MANUAL PAPER TRADING ACTIONS
+# =========================================================
+
+manual_open_info = None
+manual_close_info = None
+manual_error = None
+
+manual_col1, manual_col2, manual_col3 = st.columns(3)
+
+with manual_col1:
+    if signal and st.button("🟢 Paper Buy/Sell jetzt", use_container_width=True):
+        manual_open_info, manual_error = paper_manual_open(
+            symbol=symbol,
+            signal=signal,
+            current_price=float(current_price),
+            now_str=now_str,
+            notify=paper_notify
+        )
+        st.rerun()
+
+with manual_col2:
+    if open_pos and st.button("🔴 Offene Position schließen", use_container_width=True):
+        manual_close_info, manual_error = paper_manual_close(
+            symbol=symbol,
+            current_price=float(current_price),
+            now_str=now_str,
+            reason="MANUAL",
+            notify=paper_notify
+        )
+        st.rerun()
+
+with manual_col3:
+    if signal:
+        st.caption(f"Manuell: {signal['type']} | RR {signal['rr']:.2f}")
+    elif open_pos:
+        st.caption(f"Offen: {open_pos['direction']} | Qty {float(open_pos['qty']):.4f}")
+
+if manual_error:
+    st.warning(manual_error)
+
+if manual_open_info:
+    st.success(
+        f"🧪 MANUELL {manual_open_info['direction']} eröffnet | {manual_open_info['ticker']} | "
+        f"Entry {manual_open_info['entry_price']:.2f} | SL {manual_open_info['sl']:.2f} | TP {manual_open_info['tp']:.2f}"
+    )
+
+if manual_close_info:
+    pnl_color = "✅" if manual_close_info["pnl"] >= 0 else "❌"
+    st.info(
+        f"{pnl_color} MANUELL geschlossen | {manual_close_info['ticker']} | "
+        f"Exit {manual_close_info['exit_price']:.2f} | PnL {manual_close_info['pnl']:+.2f} ({manual_close_info['pnl_pct']:+.2f}%)"
+    )
+
+# =========================================================
+# 🔹 PAPER POSITIONS / TRADES OUTPUT
+# =========================================================
+
+paper_positions_df = paper_get_open_positions()
+paper_trades_df = paper_get_trade_history(20)
+
+if not paper_positions_df.empty:
+    st.markdown("### Offene Paper-Positionen")
+    st.dataframe(paper_positions_df, use_container_width=True)
+
+if not paper_trades_df.empty:
+    st.markdown("### Letzte Paper-Trades")
+    st.dataframe(paper_trades_df, use_container_width=True)
