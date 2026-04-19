@@ -10,17 +10,16 @@ from datetime import datetime, time
 from streamlit_autorefresh import st_autorefresh
 import pytz
 import os
-import json
 import sqlite3
 from concurrent.futures import ThreadPoolExecutor
-import traceback
 
 st.set_page_config(layout="wide")
 
 st_autorefresh(interval=15000, key="refresh")  # 60s
 
 def get_conn():
-    return sqlite3.connect("alerts.db", check_same_thread=False)
+    os.makedirs("data", exist_ok=True)
+    return sqlite3.connect("data/alerts.db", check_same_thread=False)
 
 def init_db():
     conn = get_conn()
@@ -1743,6 +1742,7 @@ if not df_fast_rth.empty:
     last_rth_price = df_fast_rth["Close"].iloc[-1]
 else:
     last_rth_price = current_price
+    
 delta_price = current_price - last_rth_price
 delta_percent = (delta_price / last_rth_price) * 100 if last_rth_price != 0 else 0
 
