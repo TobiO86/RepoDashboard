@@ -253,77 +253,6 @@ def paper_close_position(ticker, exit_price, exit_time, exit_reason):
     }
 
 
-def paper_manual_open(symbol, signal, current_price, now_str, notify=False):
-    if not signal:
-        return None, "Kein aktives A+ Signal"
-
-    pos = paper_get_open_position(symbol)
-    if pos:
-        return None, f"{symbol}: Position bereits offen"
-
-    cash = paper_get_cash()
-    risk_fraction = float(paper_get_setting("risk_fraction", 0.25) or 0.25)
-    order_value = cash * risk_fraction
-    qty = max(order_value / current_price, 0)
-
-    if qty <= 0:
-        return None, "Ordergröße ist 0"
-
-    if signal["type"] == "LONG":
-        required_cash = qty * current_price
-        if required_cash > cash:
-            return None, "Nicht genug Cash für LONG"
-        paper_set_cash(cash - required_cash)
-
-    paper_open_position(
-        ticker=symbol,
-        direction=signal["type"],
-        qty=qty,
-        entry_price=current_price,
-        sl=float(signal["sl"]),
-        tp=float(signal["tp"]),
-        entry_time=now_str
-    )
-
-    info = {
-        "ticker": symbol,
-        "direction": signal["type"],
-        "qty": qty,
-        "entry_price": current_price,
-        "sl": float(signal["sl"]),
-        "tp": float(signal["tp"])
-    }
-
-    if notify:
-        send_telegram(
-            f"🧪 PAPER MANUAL {signal['type']} {symbol}\n"
-            f"Entry: {current_price:.2f}\n"
-            f"SL: {float(signal['sl']):.2f}\n"
-            f"TP: {float(signal['tp']):.2f}\n"
-            f"Qty: {qty:.4f}"
-        )
-
-    return info, None
-
-
-def paper_manual_close(symbol, current_price, now_str, reason="MANUAL", notify=False):
-    pos = paper_get_open_position(symbol)
-    if not pos:
-        return None, f"{symbol}: Keine offene Position"
-
-    info = paper_close_position(symbol, current_price, now_str, reason)
-
-    if info and notify:
-        send_telegram(
-            f"🧪 PAPER MANUAL CLOSE {symbol}\n"
-            f"Exit: {current_price:.2f}\n"
-            f"PnL: {info['pnl']:+.2f} ({info['pnl_pct']:+.2f}%)\n"
-            f"Reason: {reason}"
-        )
-
-    return info, None
-
-
 def paper_account_snapshot(live_prices=None):
     live_prices = live_prices or {}
     cash = paper_get_cash()
@@ -433,6 +362,60 @@ def paper_process_symbol(symbol, signal, current_price, now_str, auto_enabled=Tr
 
     return opened_info, closed_info
 
+
+
+def paper_manual_open(symbol, direction, current_price, sl, tp, now_str, qty=None, risk_fraction=None, notify=False):
+    pos = paper_get_open_position(symbol)
+    if pos:
+        return None, f"{symbol}: Bereits offene Position vorhanden"
+
+    cash = paper_get_cash()
+
+    if qty is None:
+        if risk_fraction is None:
+            risk_fraction = float(paper_get_setting("risk_fraction", 0.25) or 0.25)
+        order_value = cash * float(risk_fraction)
+        qty = max(order_value / current_price, 0)
+
+    qty = float(qty)
+    if qty <= 0:
+        return None, f"{symbol}: Qty muss größer als 0 sein"
+
+    if direction == "LONG":
+        required_cash = qty * current_price
+        if required_cash > cash:
+            return None, f"{symbol}: Nicht genug Cash für LONG"
+        paper_set_cash(cash - required_cash)
+
+    paper_open_position(
+        ticker=symbol,
+        direction=direction,
+        qty=qty,
+        entry_price=current_price,
+        sl=float(sl),
+        tp=float(tp),
+        entry_time=now_str
+    )
+
+    opened_info = {
+        "ticker": symbol,
+        "direction": direction,
+        "qty": qty,
+        "entry_price": current_price,
+        "sl": float(sl),
+        "tp": float(tp)
+    }
+
+    if notify:
+        send_telegram(
+            f"🧪 PAPER MANUAL {direction} {symbol}\n"
+            f"Entry: {current_price:.2f}\n"
+            f"SL: {float(sl):.2f}\n"
+            f"TP: {float(tp):.2f}\n"
+            f"Qty: {qty:.4f}"
+        )
+
+    return opened_info, None
 
 paper_init_defaults()
 
@@ -3082,58 +3065,105 @@ else:
     st.info("⚖️ NO A+ SETUP")
 
 # =========================================================
-# 🔹 MANUAL PAPER TRADING ACTIONS
+# 🔹 MANUAL PAPER ORDER BLOCK (IMMER SICHTBAR)
 # =========================================================
 
-manual_open_info = None
-manual_close_info = None
-manual_error = None
+st.markdown("### 🎛️ Manueller Paper-Orderblock")
 
-manual_col1, manual_col2, manual_col3 = st.columns(3)
+manual_pos = paper_get_open_position(symbol)
+default_manual_type = signal["type"] if signal else "LONG"
+default_manual_sl = float(signal["sl"]) if signal else (float(df["SL"].dropna().iloc[-1]) if df["SL"].notna().any() else float(current_price * 0.98))
+default_manual_tp = float(signal["tp"]) if signal else (float(df["TP"].dropna().iloc[-1]) if df["TP"].notna().any() else float(current_price * 1.02))
+default_qty = round(max((paper_get_cash() * float(paper_get_setting("risk_fraction", 0.25) or 0.25)) / float(current_price), 0), 6)
 
-with manual_col1:
-    if signal and st.button("🟢 Paper Buy/Sell jetzt", use_container_width=True):
-        manual_open_info, manual_error = paper_manual_open(
+mcol1, mcol2, mcol3, mcol4 = st.columns(4)
+manual_direction = mcol1.selectbox(
+    "Richtung",
+    ["LONG", "SHORT"],
+    index=0 if default_manual_type == "LONG" else 1,
+    key=f"manual_direction_{symbol}"
+)
+manual_qty = mcol2.number_input(
+    "Qty",
+    min_value=0.0,
+    value=float(default_qty),
+    step=max(float(default_qty) / 10, 0.001) if default_qty > 0 else 1.0,
+    format="%.6f",
+    key=f"manual_qty_{symbol}"
+)
+manual_sl = mcol3.number_input(
+    "SL",
+    value=float(default_manual_sl),
+    step=max(abs(float(current_price)) * 0.001, 0.01),
+    format="%.4f",
+    key=f"manual_sl_{symbol}"
+)
+manual_tp = mcol4.number_input(
+    "TP",
+    value=float(default_manual_tp),
+    step=max(abs(float(current_price)) * 0.001, 0.01),
+    format="%.4f",
+    key=f"manual_tp_{symbol}"
+)
+
+bcol1, bcol2, bcol3 = st.columns(3)
+
+if signal:
+    if bcol1.button("🟢 A+ Signal handeln", key=f"paper_a_plus_trade_{symbol}"):
+        opened_info, error_msg = paper_manual_open(
             symbol=symbol,
-            signal=signal,
+            direction=signal["type"],
             current_price=float(current_price),
+            sl=float(signal["sl"]),
+            tp=float(signal["tp"]),
             now_str=now_str,
+            qty=float(default_qty),
             notify=paper_notify
         )
+        if error_msg:
+            st.warning(error_msg)
+        elif opened_info:
+            st.success(f"Paper {opened_info['direction']} eröffnet: {opened_info['ticker']} | Qty {opened_info['qty']:.4f}")
+            st.rerun()
+else:
+    bcol1.button("🟢 A+ Signal handeln", key=f"paper_a_plus_trade_{symbol}_disabled", disabled=True)
+
+if bcol2.button("🟡 Manuellen Trade ausführen", key=f"paper_manual_trade_{symbol}"):
+    opened_info, error_msg = paper_manual_open(
+        symbol=symbol,
+        direction=manual_direction,
+        current_price=float(current_price),
+        sl=float(manual_sl),
+        tp=float(manual_tp),
+        now_str=now_str,
+        qty=float(manual_qty),
+        notify=paper_notify
+    )
+    if error_msg:
+        st.warning(error_msg)
+    elif opened_info:
+        st.success(f"Manueller Paper {opened_info['direction']} Trade eröffnet: {opened_info['ticker']} | Qty {opened_info['qty']:.4f}")
         st.rerun()
 
-with manual_col2:
-    if open_pos and st.button("🔴 Offene Position schließen", use_container_width=True):
-        manual_close_info, manual_error = paper_manual_close(
-            symbol=symbol,
-            current_price=float(current_price),
-            now_str=now_str,
-            reason="MANUAL",
-            notify=paper_notify
-        )
+close_disabled = manual_pos is None
+if bcol3.button("🔴 Offene Position schließen", key=f"paper_manual_close_{symbol}", disabled=close_disabled):
+    closed = paper_close_position(symbol, float(current_price), now_str, "MANUAL")
+    if closed:
+        if paper_notify:
+            send_telegram(
+                f"🧪 PAPER MANUAL CLOSE {symbol}\n"
+                f"Exit: {float(current_price):.2f}\n"
+                f"PnL: {closed['pnl']:.2f} ({closed['pnl_pct']:.2f}%)"
+            )
+        st.success(f"Position geschlossen: {symbol} | PnL {closed['pnl']:.2f}")
         st.rerun()
 
-with manual_col3:
-    if signal:
-        st.caption(f"Manuell: {signal['type']} | RR {signal['rr']:.2f}")
-    elif open_pos:
-        st.caption(f"Offen: {open_pos['direction']} | Qty {float(open_pos['qty']):.4f}")
-
-if manual_error:
-    st.warning(manual_error)
-
-if manual_open_info:
-    st.success(
-        f"🧪 MANUELL {manual_open_info['direction']} eröffnet | {manual_open_info['ticker']} | "
-        f"Entry {manual_open_info['entry_price']:.2f} | SL {manual_open_info['sl']:.2f} | TP {manual_open_info['tp']:.2f}"
+if manual_pos:
+    st.caption(
+        f"Offene Position in {symbol}: {manual_pos['direction']} | Qty {float(manual_pos['qty']):.4f} | Entry {float(manual_pos['entry_price']):.2f}"
     )
-
-if manual_close_info:
-    pnl_color = "✅" if manual_close_info["pnl"] >= 0 else "❌"
-    st.info(
-        f"{pnl_color} MANUELL geschlossen | {manual_close_info['ticker']} | "
-        f"Exit {manual_close_info['exit_price']:.2f} | PnL {manual_close_info['pnl']:+.2f} ({manual_close_info['pnl_pct']:+.2f}%)"
-    )
+else:
+    st.caption(f"Keine offene Position in {symbol}")
 
 # =========================================================
 # 🔹 PAPER POSITIONS / TRADES OUTPUT
