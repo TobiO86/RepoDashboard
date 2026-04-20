@@ -329,66 +329,66 @@ def paper_process_symbol(symbol, signal, current_price, now_str, auto_enabled=Tr
             order_value = cash * risk_fraction
             qty = max(order_value / current_price, 0)
 
-    if qty > 0:
-        # -----------------------
-        # SICHERHEITSSCHUTZ SL/TP
-        # -----------------------
-        sig_type = signal["type"]
-        sig_sl = float(signal["sl"])
-        sig_tp = float(signal["tp"])
-        sig_entry = float(current_price)
+        if qty > 0:
+            # -----------------------
+            # SICHERHEITSSCHUTZ SL/TP
+            # -----------------------
+            sig_type = signal["type"]
+            sig_sl = float(signal["sl"])
+            sig_tp = float(signal["tp"])
+            sig_entry = float(current_price)
 
-        valid_signal = True
+            valid_signal = True
 
-        if sig_type == "LONG":
-            if not (sig_sl < sig_entry < sig_tp):
-                valid_signal = False
-                st.warning(
-                    f"Paper-Trade blockiert: LONG ungültig "
-                    f"(SL={sig_sl:.2f}, Entry={sig_entry:.2f}, TP={sig_tp:.2f})"
-                )
-
-        elif sig_type == "SHORT":
-            if not (sig_tp < sig_entry < sig_sl):
-                valid_signal = False
-                st.warning(
-                    f"Paper-Trade blockiert: SHORT ungültig "
-                    f"(TP={sig_tp:.2f}, Entry={sig_entry:.2f}, SL={sig_sl:.2f})"
-                )
-
-        if valid_signal:
             if sig_type == "LONG":
-                paper_set_cash(cash - (qty * current_price))
+                if not (sig_sl < sig_entry < sig_tp):
+                    valid_signal = False
+                    st.warning(
+                        f"Paper-Trade blockiert: LONG ungültig "
+                        f"(SL={sig_sl:.2f}, Entry={sig_entry:.2f}, TP={sig_tp:.2f})"
+                    )
 
-            paper_open_position(
-                ticker=symbol,
-                direction=sig_type,
-                qty=qty,
-                entry_price=current_price,
-                sl=sig_sl,
-                tp=sig_tp,
-                entry_time=now_str
-            )
+            elif sig_type == "SHORT":
+                if not (sig_tp < sig_entry < sig_sl):
+                    valid_signal = False
+                    st.warning(
+                        f"Paper-Trade blockiert: SHORT ungültig "
+                        f"(TP={sig_tp:.2f}, Entry={sig_entry:.2f}, SL={sig_sl:.2f})"
+                    )
 
-            paper_set_setting("last_signal_key", signal_key)
+            if valid_signal:
+                if sig_type == "LONG":
+                    paper_set_cash(cash - (qty * current_price))
 
-            opened_info = {
-                "ticker": symbol,
-                "direction": sig_type,
-                "qty": qty,
-                "entry_price": current_price,
-                "sl": sig_sl,
-                "tp": sig_tp
-            }
+                paper_open_position(
+                    ticker=symbol,
+                    direction=sig_type,
+                    qty=qty,
+                    entry_price=current_price,
+                    sl=sig_sl,
+                    tp=sig_tp,
+                    entry_time=now_str
+                )
 
-            if notify:
-                send_telegram(
-                    f"🧪 PAPER {sig_type} {symbol}\n"
-                    f"Entry: {current_price:.2f}\n"
-                    f"SL: {sig_sl:.2f}\n"
-                    f"TP: {sig_tp:.2f}\n"
-                    f"Qty: {qty:.4f}"
-            )
+                paper_set_setting("last_signal_key", signal_key)
+
+                opened_info = {
+                    "ticker": symbol,
+                    "direction": sig_type,
+                    "qty": qty,
+                    "entry_price": current_price,
+                    "sl": sig_sl,
+                    "tp": sig_tp
+                }
+
+                if notify:
+                    send_telegram(
+                        f"🧪 PAPER {sig_type} {symbol}\n"
+                        f"Entry: {current_price:.2f}\n"
+                        f"SL: {sig_sl:.2f}\n"
+                        f"TP: {sig_tp:.2f}\n"
+                        f"Qty: {qty:.4f}"
+                )
 
     return opened_info, closed_info
 
