@@ -3239,11 +3239,81 @@ section[data-testid="stSidebar"] div[data-baseweb="select"] span {
 st.markdown("### 📈 Performance Dashboard")
 
 pcol1, pcol2, pcol3, pcol4, pcol5 = st.columns(5)
-pcol1.metric("Backtest Trades", f"{backtest_stats['trades']}")
-pcol2.metric("Winrate", f"{backtest_stats['winrate']:.1f}%")
-pcol3.metric("Profit Factor", "∞" if np.isinf(backtest_stats['profit_factor']) else f"{backtest_stats['profit_factor']:.2f}")
-pcol4.metric("Expectancy (R)", f"{backtest_stats['expectancy_r']:.2f}")
-pcol5.metric("Max Drawdown (R)", f"{backtest_stats['max_drawdown_r']:.2f}")
+
+trades = backtest_stats["trades"]
+winrate = backtest_stats["winrate"]
+pf = backtest_stats["profit_factor"]
+expectancy = backtest_stats["expectancy_r"]
+drawdown = backtest_stats["max_drawdown_r"]
+
+pf_text = "∞" if np.isinf(pf) else f"{pf:.2f}"
+
+pcol1.metric(
+    "Backtest Trades",
+    f"{trades} {traffic_light(trades, 'trades')} (min: 50+)")
+
+pcol2.metric(
+    "Winrate",
+    f"{winrate:.1f}% {traffic_light(winrate, 'winrate')} (gut: >50%, stark: >60%)")
+
+pcol3.metric(
+    "Profit Factor",
+    f"{pf_text} {traffic_light(pf if not np.isinf(pf) else 999, 'profit_factor')} (gut: >1.5, stark: >2.0)")
+
+pcol4.metric(
+    "Expectancy (R)",
+    f"{expectancy:.2f} {traffic_light(expectancy, 'expectancy')} (gut: >0.2, stark: >0.4)")
+
+pcol5.metric(
+    "Max Drawdown (R)",
+    f"{drawdown:.2f} {traffic_light(drawdown, 'drawdown')} (gut: >-5, kritisch: < -10)"
+)
+
+def traffic_light(value, metric_name):
+    if metric_name == "trades":
+        if value >= 100:
+            return "🟢"
+        elif value >= 50:
+            return "🟡"
+        else:
+            return "🔴"
+
+    elif metric_name == "winrate":
+        if value >= 60:
+            return "🟢"
+        elif value >= 50:
+            return "🟡"
+        else:
+            return "🔴"
+
+    elif metric_name == "profit_factor":
+        if value >= 2.0:
+            return "🟢"
+        elif value >= 1.5:
+            return "🟡"
+        else:
+            return "🔴"
+
+    elif metric_name == "expectancy":
+        if value >= 0.4:
+            return "🟢"
+        elif value >= 0.2:
+            return "🟡"
+        elif value > 0:
+            return "🟠"
+        else:
+            return "🔴"
+
+    elif metric_name == "drawdown":
+        # Achtung: Drawdown ist negativ, z.B. -3 gut, -10 schlecht
+        if value >= -5:
+            return "🟢"
+        elif value >= -10:
+            return "🟡"
+        else:
+            return "🔴"
+
+    return "⚪"
 
 if backtest_enabled and not backtest_trades.empty:
     eq_df = pd.DataFrame({
