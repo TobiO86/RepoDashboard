@@ -6,7 +6,7 @@ from plotly.subplots import make_subplots
 import numpy as np
 import requests
 import pytz
-from datetime import datetime, time
+from datetime import datetime, time, timedelta
 from streamlit_autorefresh import st_autorefresh
 import pytz
 import os
@@ -994,7 +994,7 @@ def compute_atr(df):
 def process_symbol(s, data_all):
     df_s = data_all.get(s)
 
-    if df_s is None or len(df_s) < 10:
+    if df_s is None or len(df_s) < 60:
         return None
 
     df_s = df_s.copy()
@@ -1011,8 +1011,8 @@ def process_symbol(s, data_all):
     if "Session" not in df_s.columns:
         df_s["Session"] = "RTH"
 
-    # Core indicators
     df_s["ATR"] = compute_atr(df_s)
+    df_s["ATR_pct"] = df_s["ATR"] / df_s["Close"].replace(0, np.nan)
 
     up_move = df_s["High"].diff()
     down_move = -df_s["Low"].diff()
@@ -1020,16 +1020,15 @@ def process_symbol(s, data_all):
     df_s["+DM"] = np.where((up_move > down_move) & (up_move > 0), up_move, 0)
     df_s["-DM"] = np.where((down_move > up_move) & (down_move > 0), down_move, 0)
 
-    plus_dm = df_s["+DM"].ewm(span=14, adjust=False).mean()
-    minus_dm = df_s["-DM"].ewm(span=14, adjust=False).mean()
+    plus_dm = pd.Series(df_s["+DM"], index=df_s.index).ewm(span=14, adjust=False).mean()
+    minus_dm = pd.Series(df_s["-DM"], index=df_s.index).ewm(span=14, adjust=False).mean()
 
-    df_s["+DI"] = 100 * (plus_dm / df_s["ATR"])
-    df_s["-DI"] = 100 * (minus_dm / df_s["ATR"])
+    df_s["+DI"] = 100 * (plus_dm / df_s["ATR"].replace(0, np.nan))
+    df_s["-DI"] = 100 * (minus_dm / df_s["ATR"].replace(0, np.nan))
 
-    dx = (np.abs(df_s["+DI"] - df_s["-DI"]) / (df_s["+DI"] + df_s["-DI"])) * 100
+    dx = (np.abs(df_s["+DI"] - df_s["-DI"]) / (df_s["+DI"] + df_s["-DI"]).replace(0, np.nan)) * 100
     df_s["ADX"] = dx.ewm(span=14, adjust=False).mean().fillna(0)
 
-    # VWAP
     tp = (df_s["High"] + df_s["Low"] + df_s["Close"]) / 3
     df_s["Vol_RTH"] = np.where(df_s["Session"] == "RTH", df_s["Volume"], np.nan)
     df_s["Vol_Avg_RTH"] = pd.Series(df_s["Vol_RTH"], index=df_s.index).rolling(20, min_periods=5).mean()
@@ -1041,78 +1040,95 @@ def process_symbol(s, data_all):
         pd.Series(vol_rth, index=df_s.index).groupby(df_s.index.date).cumsum().replace(0, np.nan)
     )
 
-    df_s["VWAP_PRE"] = df_s["VWAP_RTH"]
-    df_s["VWAP_AH"] = df_s["VWAP_RTH"]
+    df_s["EMA20"] = df_s["Close"].ewm(span=20, adjust=False).mean()
+    df_s["EMA50"] = df_s["Close"].ewm(span=50, adjust=False).mean()
+    df_s["EMA200"] = df_s["Close"].ewm(span=200, adjust=False).mean()
 
-    price = df_s["Close"].iloc[-1]
+    delta_close = df_s["Close"].diff()
+    gain = delta_close.clip(lower=0)
+    loss = -delta_close.clip(upper=0)
+    rs = gain.ewm(alpha=1/14, adjust=False).mean() / loss.ewm(alpha=1/14, adjust=False).mean().replace(0, 1e-10)
+    df_s["RSI"] = 100 - (100 / (1 + rs))
+
+    price_i = float(df_s["Close"].iloc[-1])
     avg_vol = df_s["Vol_Avg_RTH"].iloc[-1]
-
-    if pd.isna(avg_vol) or avg_vol == 0:
+    if pd.isna(avg_vol) or avg_vol == 0 or pd.isna(price_i):
         return None
 
-    dollar_vol = price * avg_vol
+    vwap_i = df_s["VWAP_RTH"].iloc[-1]
+    atr_i = df_s["ATR"].iloc[-1]
+    rel_vol = df_s["Volume"].iloc[-1] / avg_vol if avg_vol else np.nan
+    atr_pct = df_s["ATR_pct"].iloc[-1]
+    dollar_vol = price_i * avg_vol
 
-    score = 0
-    if dollar_vol > 5_000_000:
-        score += 1
-    if dollar_vol > 20_000_000:
-        score += 1
+    if pd.isna(vwap_i) or pd.isna(atr_i) or atr_i <= 0:
+        return None
 
-    atr = df_s["ATR"].iloc[-1]
-    atr_pct = atr / price if price != 0 else np.nan
+    trend_up = bool(df_s["EMA20"].iloc[-1] > df_s["EMA50"].iloc[-1] > df_s["EMA200"].iloc[-1])
+    trend_down = bool(df_s["EMA20"].iloc[-1] < df_s["EMA50"].iloc[-1] < df_s["EMA200"].iloc[-1])
+    strong_trend = bool(df_s["ADX"].iloc[-1] > 22)
 
-    if pd.notna(atr_pct) and atr_pct > 0.003:
-        score += 1
-    if pd.notna(atr_pct) and atr_pct > 0.01:
-        score += 1
+    recent = df_s.tail(20)
+    breakout_long = price_i > recent["High"].iloc[:-1].max() if len(recent) > 1 else False
+    breakout_short = price_i < recent["Low"].iloc[:-1].min() if len(recent) > 1 else False
 
-    rel_vol = df_s["Volume"].iloc[-1] / avg_vol
-    if rel_vol > 1.2:
-        score += 1
-    if rel_vol > 1.5:
-        score += 1
-
-    ema20 = df_s["Close"].ewm(span=20).mean()
-    ema50 = df_s["Close"].ewm(span=50).mean()
-
-    rsi = 100 - (100 / (1 + (
-        df_s["Close"].diff().clip(lower=0).ewm(alpha=1/14).mean() /
-        (-df_s["Close"].diff().clip(upper=0).ewm(alpha=1/14).mean().replace(0, 1e-10))
-    ))).iloc[-1]
-
-    vwap = df_s["VWAP_RTH"].iloc[-1]
+    dist_vwap = abs(price_i - vwap_i) / atr_i
+    ema20_i = df_s["EMA20"].iloc[-1]
+    pullback_long = trend_up and price_i > vwap_i and abs(price_i - ema20_i) <= atr_i * 0.6
+    pullback_short = trend_down and price_i < vwap_i and abs(price_i - ema20_i) <= atr_i * 0.6
 
     long_score = 0
     short_score = 0
 
-    if price > vwap:
+    if dollar_vol > 5_000_000:
+        long_score += 1
+        short_score += 1
+    if dollar_vol > 20_000_000:
+        long_score += 1
+        short_score += 1
+    if pd.notna(rel_vol) and rel_vol > 1.2:
+        long_score += 1
+        short_score += 1
+    if pd.notna(rel_vol) and rel_vol > 1.8:
+        long_score += 1
+        short_score += 1
+    if pd.notna(atr_pct) and atr_pct > 0.003:
+        long_score += 1
+        short_score += 1
+    if pd.notna(atr_pct) and atr_pct > 0.008:
+        long_score += 1
+        short_score += 1
+
+    if trend_up:
+        long_score += 2
+    if trend_down:
+        short_score += 2
+    if strong_trend and trend_up:
+        long_score += 1
+    if strong_trend and trend_down:
+        short_score += 1
+
+    rsi_i = df_s["RSI"].iloc[-1]
+    if rsi_i > 55:
+        long_score += 1
+    elif rsi_i < 45:
+        short_score += 1
+
+    if price_i > vwap_i:
         long_score += 1
     else:
         short_score += 1
 
-    if ema20.iloc[-1] > ema50.iloc[-1]:
-        long_score += 1
-    else:
-        short_score += 1
-
-    if rsi > 55:
-        long_score += 1
-    elif rsi < 45:
-        short_score += 1
-
-    total_score = max(long_score, short_score) + score
-    if total_score < 7:
-        return None
+    if breakout_long:
+        long_score += 2
+    if breakout_short:
+        short_score += 2
+    if pullback_long:
+        long_score += 2
+    if pullback_short:
+        short_score += 2
 
     setup = "LONG" if long_score > short_score else "SHORT"
-
-    # Scanner-SLTP-Version
-    price_i = df_s["Close"].iloc[-1]
-    atr_i = df_s["ATR"].iloc[-1]
-    vwap_i = df_s["VWAP_RTH"].iloc[-1]
-
-    if pd.isna(price_i) or pd.isna(atr_i) or pd.isna(vwap_i):
-        return None
 
     min_risk = atr_i * 0.5
     max_risk = atr_i * 3
@@ -1121,36 +1137,42 @@ def process_symbol(s, data_all):
         swing_low = df_s["Low"].iloc[max(0, len(df_s)-11):len(df_s)-1].min()
         if pd.isna(swing_low):
             swing_low = price_i - atr_i
-        sl = min(swing_low, vwap_i - atr_i * 0.5)
+        sl = min(swing_low, vwap_i - atr_i * 0.5, ema20_i - atr_i * 0.3)
         if sl >= price_i:
             sl = price_i - min_risk
         risk = max(min_risk, min(price_i - sl, max_risk))
-        tp = price_i + risk * 2
+        rr_target = 2.2 if breakout_long else 1.8
+        tp = price_i + risk * rr_target
     else:
         swing_high = df_s["High"].iloc[max(0, len(df_s)-11):len(df_s)-1].max()
         if pd.isna(swing_high):
             swing_high = price_i + atr_i
-        sl = max(swing_high, vwap_i + atr_i * 0.5)
+        sl = max(swing_high, vwap_i + atr_i * 0.5, ema20_i + atr_i * 0.3)
         if sl <= price_i:
             sl = price_i + min_risk
         risk = max(min_risk, min(sl - price_i, max_risk))
-        tp = price_i - risk * 2
+        rr_target = 2.2 if breakout_short else 1.8
+        tp = price_i - risk * rr_target
 
     if pd.isna(sl) or pd.isna(tp) or price_i == sl:
         return None
 
-    # Risk/Reward
-    #👉 A+ Setup: RR ≥ 2.0 – 3.0 + Score >= 8
-    #👍 Normales Setup: 👉 RR ≥ 1.5 Score 5-7
     rr = abs(tp - price_i) / abs(price_i - sl)
-    if total_score >= 8:
-        min_rr = 2.0
-    elif total_score >= 6:
-        min_rr = 1.5
-    else:
-        return None
+    total_score = max(long_score, short_score)
+    min_rr = 1.6 if total_score >= 9 else 1.4
+    signal_ok = (rr >= min_rr) and (total_score >= globals().get("scanner_min_score", 7))
 
-    signal_ok = rr >= min_rr
+    tags = []
+    if breakout_long or breakout_short:
+        tags.append("BREAK")
+    if pullback_long or pullback_short:
+        tags.append("PULL")
+    if strong_trend:
+        tags.append("ADX")
+    if pd.notna(rel_vol) and rel_vol > 1.5:
+        tags.append("RVOL")
+    if dist_vwap < 0.8:
+        tags.append("NEAR VWAP")
 
     return {
         "symbol": s,
@@ -1162,7 +1184,11 @@ def process_symbol(s, data_all):
         "score": total_score,
         "delta": long_score - short_score,
         "signal_ok": signal_ok,
-        "timestamp": df_s.index[-1]
+        "timestamp": df_s.index[-1],
+        "rel_vol": float(rel_vol) if pd.notna(rel_vol) else np.nan,
+        "atr_pct": float(atr_pct) if pd.notna(atr_pct) else np.nan,
+        "tags": ", ".join(tags[:3]),
+        "entry_type": "Pullback" if ((setup == "LONG" and pullback_long) or (setup == "SHORT" and pullback_short)) else "Breakout"
     }
 
 def scan_market_core(symbols, data_all):
@@ -1228,7 +1254,7 @@ def render_list(title, stocks):
         if not ticker:
             continue
 
-        label = f"{ticker} | {setup} | ⭐{score} Δ{delta}"
+        label = f"{ticker} | {setup} | ⭐{score} Δ{delta} | {s.get('entry_type', '-')} | {s.get('tags', '')}"
 
         if st.sidebar.button(label, key=f"{title}_{i}_{ticker}"):
             st.session_state.symbol = ticker
@@ -1250,6 +1276,39 @@ limit = st.sidebar.slider(
 live_mode = st.sidebar.checkbox("⚡ Live Mode (RTH only)", True)
 show_rth_only_vwap = st.sidebar.checkbox("VWAP nur RTH", True)
 color_sessions = st.sidebar.checkbox("Sessions farbig", True)
+
+strategy_mode = st.sidebar.selectbox(
+    "Entry-Modus",
+    ["Breakout", "Pullback", "Hybrid"],
+    index=2,
+    key="strategy_mode"
+)
+
+scanner_min_score = st.sidebar.slider(
+    "Scanner Mindestscore",
+    min_value=6,
+    max_value=10,
+    value=7,
+    step=1,
+    key="scanner_min_score"
+)
+
+backtest_enabled = st.sidebar.checkbox("Backtest anzeigen", value=True, key="backtest_enabled")
+backtest_bars = st.sidebar.slider(
+    "Backtest Kerzen",
+    min_value=100,
+    max_value=2000,
+    value=600,
+    step=100,
+    key="backtest_bars"
+)
+backtest_initial_capital = st.sidebar.number_input(
+    "Backtest Startkapital",
+    min_value=1000.0,
+    value=10000.0,
+    step=1000.0,
+    key="backtest_initial_capital"
+)
 
 if live_mode:
     if SESSION == "WEEKEND":
@@ -2066,6 +2125,30 @@ for date, group in df.groupby("Date"):
 df["ORB_High"] = orb_highs
 df["ORB_Low"] = orb_lows   
 
+def build_pullback_features(df):
+    df = df.copy()
+    tolerance = df["ATR"].fillna(0) * 0.35
+
+    df["PullbackLongReady"] = (
+        (df["EMA20"] > df["EMA50"]) &
+        (df["Close"] > df["VWAP_RTH"]) &
+        ((df["Low"] - df["EMA20"]).abs() <= tolerance) &
+        (df["Close"] > df["Open"])
+    )
+
+    df["PullbackShortReady"] = (
+        (df["EMA20"] < df["EMA50"]) &
+        (df["Close"] < df["VWAP_RTH"]) &
+        ((df["High"] - df["EMA20"]).abs() <= tolerance) &
+        (df["Close"] < df["Open"])
+    )
+
+    return df
+
+
+df = build_pullback_features(df)
+
+
 def get_smart_signal(df, i):
     long_score = df["LongScore"].iloc[i]
     short_score = df["ShortScore"].iloc[i]
@@ -2094,7 +2177,7 @@ MIN_SCORE = 5
 DELTA_THRESHOLD = 2
 VOLUME_FACTOR = 1.2
 
-def get_entry_signal(df, i, bias):
+def get_entry_signal(df, i, bias, strategy_mode="Hybrid"):
     price = df["Close"].iloc[i]
     vwap = df["VWAP_RTH"].iloc[i]
 
@@ -2111,14 +2194,13 @@ def get_entry_signal(df, i, bias):
     sl = df["SL"].iloc[i]
     tp = df["TP"].iloc[i]
 
-    if np.isnan(sl) or np.isnan(tp):
+    if np.isnan(sl) or np.isnan(tp) or np.isnan(vwap):
         return None
 
     rr = abs((tp - price) / (price - sl)) if price != sl else 0
     min_rr = get_min_rr_for_entry(df, i)
 
-    # 🚀 LONG
-    if (
+    breakout_long = (
         bias == "LONG" and
         long_score >= MIN_SCORE and
         delta >= DELTA_THRESHOLD and
@@ -2126,18 +2208,9 @@ def get_entry_signal(df, i, bias):
         price > orb_high and
         volume > avg_volume * VOLUME_FACTOR and
         rr >= min_rr
-    ):
-        return {
-            "type": "LONG",
-            "price": price,
-            "sl": sl,
-            "tp": tp,
-            "rr": rr,
-            "delta": delta
-        }
+    )
 
-    # 🔻 SHORT
-    if (
+    breakout_short = (
         bias == "SHORT" and
         short_score >= MIN_SCORE and
         delta <= -DELTA_THRESHOLD and
@@ -2145,22 +2218,183 @@ def get_entry_signal(df, i, bias):
         price < orb_low and
         volume > avg_volume * VOLUME_FACTOR and
         rr >= min_rr
-    ):
+    )
+
+    pullback_long = (
+        bias == "LONG" and
+        long_score >= MIN_SCORE and
+        delta >= DELTA_THRESHOLD and
+        bool(df["PullbackLongReady"].iloc[i]) and
+        rr >= max(1.2, min_rr - 0.2)
+    )
+
+    pullback_short = (
+        bias == "SHORT" and
+        short_score >= MIN_SCORE and
+        delta <= -DELTA_THRESHOLD and
+        bool(df["PullbackShortReady"].iloc[i]) and
+        rr >= max(1.2, min_rr - 0.2)
+    )
+
+    mode = (strategy_mode or "Hybrid").lower()
+
+    if mode == "breakout":
+        use_long = breakout_long
+        use_short = breakout_short
+        strategy_tag = "Breakout"
+    elif mode == "pullback":
+        use_long = pullback_long
+        use_short = pullback_short
+        strategy_tag = "Pullback"
+    else:
+        use_long = breakout_long or pullback_long
+        use_short = breakout_short or pullback_short
+        strategy_tag = "Hybrid"
+
+    if use_long:
+        return {
+            "type": "LONG",
+            "price": price,
+            "sl": sl,
+            "tp": tp,
+            "rr": rr,
+            "delta": delta,
+            "strategy": strategy_tag,
+            "entry_reason": "Pullback" if pullback_long and not breakout_long else "Breakout"
+        }
+
+    if use_short:
         return {
             "type": "SHORT",
             "price": price,
             "sl": sl,
             "tp": tp,
             "rr": rr,
-            "delta": delta
+            "delta": delta,
+            "strategy": strategy_tag,
+            "entry_reason": "Pullback" if pullback_short and not breakout_short else "Breakout"
         }
 
-    return None  
+    return None
+
+def build_trade_table_from_signals(df, strategy_mode="Hybrid", max_bars=None):
+    if df.empty:
+        return pd.DataFrame()
+
+    if max_bars is not None and len(df) > max_bars:
+        df_bt = df.tail(max_bars).copy()
+    else:
+        df_bt = df.copy()
+
+    trades = []
+    in_trade = False
+    current_trade = None
+
+    for i in range(30, len(df_bt)):
+        row = df_bt.iloc[i]
+
+        if in_trade and current_trade is not None:
+            direction = current_trade["direction"]
+            exit_price = None
+            exit_reason = None
+
+            if direction == "LONG":
+                if row["Low"] <= current_trade["sl"]:
+                    exit_price = current_trade["sl"]
+                    exit_reason = "SL"
+                elif row["High"] >= current_trade["tp"]:
+                    exit_price = current_trade["tp"]
+                    exit_reason = "TP"
+            else:
+                if row["High"] >= current_trade["sl"]:
+                    exit_price = current_trade["sl"]
+                    exit_reason = "SL"
+                elif row["Low"] <= current_trade["tp"]:
+                    exit_price = current_trade["tp"]
+                    exit_reason = "TP"
+
+            if exit_price is not None:
+                pnl = (exit_price - current_trade["entry_price"]) if direction == "LONG" else (current_trade["entry_price"] - exit_price)
+                risk = abs(current_trade["entry_price"] - current_trade["sl"])
+                rr_realized = pnl / risk if risk else 0
+                trades.append({
+                    **current_trade,
+                    "exit_time": df_bt.index[i],
+                    "exit_price": exit_price,
+                    "exit_reason": exit_reason,
+                    "pnl": pnl,
+                    "rr_realized": rr_realized,
+                    "bars_held": i - current_trade["entry_i"]
+                })
+                in_trade = False
+                current_trade = None
+                continue
+
+        if in_trade:
+            continue
+
+        bias, _, _, _ = get_smart_signal(df_bt, i)
+        sig = get_entry_signal(df_bt, i, bias, strategy_mode)
+        if sig is None:
+            continue
+
+        current_trade = {
+            "entry_i": i,
+            "entry_time": df_bt.index[i],
+            "direction": sig["type"],
+            "entry_price": sig["price"],
+            "sl": sig["sl"],
+            "tp": sig["tp"],
+            "rr_planned": sig["rr"],
+            "score_long": float(df_bt["LongScore"].iloc[i]),
+            "score_short": float(df_bt["ShortScore"].iloc[i]),
+            "score_delta": float(df_bt["ScoreDelta"].iloc[i]),
+            "strategy": sig.get("strategy", strategy_mode),
+            "entry_reason": sig.get("entry_reason", strategy_mode)
+        }
+        in_trade = True
+
+    return pd.DataFrame(trades)
+
+
+def compute_backtest_stats(trades_df, initial_capital=10000.0):
+    if trades_df is None or trades_df.empty:
+        return {
+            "trades": 0,
+            "winrate": 0.0,
+            "profit_factor": 0.0,
+            "expectancy_r": 0.0,
+            "net_pnl_r": 0.0,
+            "max_drawdown_r": 0.0,
+            "equity_curve": pd.Series(dtype=float)
+        }
+
+    rr = trades_df["rr_realized"].fillna(0.0)
+    wins = rr[rr > 0]
+    losses = rr[rr <= 0]
+    gross_profit = wins.sum()
+    gross_loss = abs(losses.sum())
+    equity_r = rr.cumsum()
+    rolling_max = equity_r.cummax()
+    drawdown = equity_r - rolling_max
+
+    return {
+        "trades": int(len(trades_df)),
+        "winrate": float((rr > 0).mean() * 100),
+        "profit_factor": float(gross_profit / gross_loss) if gross_loss > 0 else float("inf"),
+        "expectancy_r": float(rr.mean()),
+        "net_pnl_r": float(rr.sum()),
+        "max_drawdown_r": float(drawdown.min()),
+        "equity_curve": equity_r
+    }
+
 
 i = len(df) - 1
 
 smart_type, long_score, short_score, delta = get_smart_signal(df, i)
-signal = get_entry_signal(df, i, smart_type)    
+signal = get_entry_signal(df, i, smart_type, strategy_mode)
+backtest_trades = build_trade_table_from_signals(df, strategy_mode=strategy_mode, max_bars=backtest_bars if backtest_enabled else None)
+backtest_stats = compute_backtest_stats(backtest_trades, backtest_initial_capital)
 
 def last_valid(series):
     try:
@@ -2674,6 +2908,39 @@ for r in resistances:
 
 
 # =========================================================
+# 🔹 PULLBACK MARKERS
+# =========================================================
+
+if "PullbackLongReady" in df.columns:
+    pb_long = df[df["PullbackLongReady"]]
+    if not pb_long.empty:
+        fig.add_trace(
+            go.Scatter(
+                x=pb_long.index,
+                y=pb_long["Low"],
+                mode="markers",
+                marker=dict(symbol="circle", size=8, color="cyan"),
+                name="Pullback Long"
+            ),
+            row=price_row, col=1
+        )
+
+if "PullbackShortReady" in df.columns:
+    pb_short = df[df["PullbackShortReady"]]
+    if not pb_short.empty:
+        fig.add_trace(
+            go.Scatter(
+                x=pb_short.index,
+                y=pb_short["High"],
+                mode="markers",
+                marker=dict(symbol="circle", size=8, color="magenta"),
+                name="Pullback Short"
+            ),
+            row=price_row, col=1
+        )
+
+
+# =========================================================
 # 🔹 SL / TP LINES
 # =========================================================
 
@@ -2966,6 +3233,49 @@ section[data-testid="stSidebar"] div[data-baseweb="select"] span {
 
 
 # =========================================================
+# 🔹 PERFORMANCE DASHBOARD
+# =========================================================
+
+st.markdown("### 📈 Performance Dashboard")
+
+pcol1, pcol2, pcol3, pcol4, pcol5 = st.columns(5)
+pcol1.metric("Backtest Trades", f"{backtest_stats['trades']}")
+pcol2.metric("Winrate", f"{backtest_stats['winrate']:.1f}%")
+pcol3.metric("Profit Factor", "∞" if np.isinf(backtest_stats['profit_factor']) else f"{backtest_stats['profit_factor']:.2f}")
+pcol4.metric("Expectancy (R)", f"{backtest_stats['expectancy_r']:.2f}")
+pcol5.metric("Max Drawdown (R)", f"{backtest_stats['max_drawdown_r']:.2f}")
+
+if backtest_enabled and not backtest_trades.empty:
+    eq_df = pd.DataFrame({
+        "Trade": range(1, len(backtest_trades) + 1),
+        "Equity_R": backtest_stats["equity_curve"].values
+    })
+    st.line_chart(eq_df.set_index("Trade"))
+
+    perf_col1, perf_col2 = st.columns([1.3, 1])
+    with perf_col1:
+        st.markdown("#### Letzte Backtest-Trades")
+        st.dataframe(
+            backtest_trades[[
+                "entry_time", "direction", "entry_price", "sl", "tp",
+                "exit_time", "exit_price", "exit_reason", "rr_realized",
+                "strategy", "entry_reason"
+            ]].tail(12),
+            use_container_width=True
+        )
+    with perf_col2:
+        st.markdown("#### Setup-Auswertung")
+        setup_stats = backtest_trades.groupby(["direction", "entry_reason"]).agg(
+            Trades=("direction", "count"),
+            Avg_R=("rr_realized", "mean"),
+            Winrate=("rr_realized", lambda x: (x > 0).mean() * 100)
+        ).reset_index()
+        st.dataframe(setup_stats, use_container_width=True)
+else:
+    st.caption("Noch keine abgeschlossenen Backtest-Trades für die aktuelle Auswahl.")
+
+
+# =========================================================
 # 🔹 PLOT OUTPUT
 # =========================================================
 
@@ -3081,14 +3391,14 @@ if signal:
             f"🚀 A+ LONG\n"
             f"Entry: {signal['price']:.2f}\n"
             f"SL: {signal['sl']:.2f} | TP: {signal['tp']:.2f}\n"
-            f"RR: {signal['rr']:.2f}"
+            f"RR: {signal['rr']:.2f} | {signal.get('entry_reason', '-')}"
         )
     else:
         st.error(
             f"🔻 A+ SHORT\n"
             f"Entry: {signal['price']:.2f}\n"
             f"SL: {signal['sl']:.2f} | TP: {signal['tp']:.2f}\n"
-            f"RR: {signal['rr']:.2f}"
+            f"RR: {signal['rr']:.2f} | {signal.get('entry_reason', '-')}"
         )
 else:
     st.info("⚖️ NO A+ SETUP")
