@@ -1210,6 +1210,7 @@ def scan_market(limit=50):
     losers = sorted(losers, key=lambda x: x["score"], reverse=True)
 
     for r in results:
+
         if not r["signal_ok"]:
             continue
 
@@ -1218,7 +1219,7 @@ def scan_market(limit=50):
         if "sent_signals" not in st.session_state:
             st.session_state.sent_signals = set()
 
-        if signal_id not in st.session_state.sent_signals:
+        if SESSION == "RTH" and signal_id not in st.session_state.sent_signals:
             send_telegram(
                 f"🚨 {r['symbol']} {r['setup']}\n\n"
                 f"Entry: {r['price']:.2f}\n"
@@ -3246,29 +3247,6 @@ pf = backtest_stats["profit_factor"]
 expectancy = backtest_stats["expectancy_r"]
 drawdown = backtest_stats["max_drawdown_r"]
 
-pf_text = "∞" if np.isinf(pf) else f"{pf:.2f}"
-
-pcol1.metric(
-    "Backtest Trades",
-    f"{trades} {traffic_light(trades, 'trades')} (min: 50+)")
-
-pcol2.metric(
-    "Winrate",
-    f"{winrate:.1f}% {traffic_light(winrate, 'winrate')} (gut: >50%, stark: >60%)")
-
-pcol3.metric(
-    "Profit Factor",
-    f"{pf_text} {traffic_light(pf if not np.isinf(pf) else 999, 'profit_factor')} (gut: >1.5, stark: >2.0)")
-
-pcol4.metric(
-    "Expectancy (R)",
-    f"{expectancy:.2f} {traffic_light(expectancy, 'expectancy')} (gut: >0.2, stark: >0.4)")
-
-pcol5.metric(
-    "Max Drawdown (R)",
-    f"{drawdown:.2f} {traffic_light(drawdown, 'drawdown')} (gut: >-5, kritisch: < -10)"
-)
-
 def traffic_light(value, metric_name):
     if metric_name == "trades":
         if value >= 100:
@@ -3315,6 +3293,62 @@ def traffic_light(value, metric_name):
 
     return "⚪"
 
+
+pf_text = "∞" if np.isinf(pf) else f"{pf:.2f}"
+
+pcol1, pcol2, pcol3, pcol4, pcol5 = st.columns(5)
+
+# --- Trades ---
+pcol1.metric(
+    "Backtest Trades",
+    f"{trades}"
+)
+pcol1.markdown(
+    f"<span style='font-size:12px'>{traffic_light(trades, 'trades')} min: 50+</span>",
+    unsafe_allow_html=True
+)
+
+# --- Winrate ---
+pcol2.metric(
+    "Winrate",
+    f"{winrate:.1f}%"
+)
+pcol2.markdown(
+    f"<span style='font-size:11px; opacity:0.7'>{traffic_light(winrate, 'winrate')} gut: >50%, stark: >60%</span>",
+    unsafe_allow_html=True
+)
+
+# --- Profit Factor ---
+pf_text = "∞" if np.isinf(pf) else f"{pf:.2f}"
+
+pcol3.metric(
+    "Profit Factor",
+    pf_text
+)
+pcol3.markdown(
+    f"<span style='font-size:11px; opacity:0.7'>{traffic_light(pf if not np.isinf(pf) else 999, 'profit_factor')} gut: >1.5, stark: >2.0</span>",
+    unsafe_allow_html=True
+)
+
+# --- Expectancy ---
+pcol4.metric(
+    "Expectancy (R)",
+    f"{expectancy:.2f}"
+)
+pcol4.markdown(
+    f"<span style='font-size:11px; opacity:0.7'>{traffic_light(expectancy, 'expectancy')} gut: >0.2, stark: >0.4</span>",
+    unsafe_allow_html=True
+)
+
+# --- Drawdown ---
+pcol5.metric(
+    "Max Drawdown (R)",
+    f"{drawdown:.2f}"
+)
+pcol5.markdown(
+    f"<span style='font-size:11px; opacity:0.7'>{traffic_light(drawdown, 'drawdown')} gut: >-5, kritisch: < -10</span>",
+    unsafe_allow_html=True
+)
 if backtest_enabled and not backtest_trades.empty:
     eq_df = pd.DataFrame({
         "Trade": range(1, len(backtest_trades) + 1),
