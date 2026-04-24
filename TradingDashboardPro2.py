@@ -296,6 +296,9 @@ def paper_process_symbol(symbol, signal, current_price, now_str, auto_enabled=Tr
     closed_info = None
     opened_info = None
 
+    # -----------------------
+    # 1) OFFENE POSITION ÜBERWACHEN
+    # -----------------------
     if pos:
         direction = pos["direction"]
         sl = float(pos["sl"])
@@ -303,92 +306,96 @@ def paper_process_symbol(symbol, signal, current_price, now_str, auto_enabled=Tr
 
         if direction == "LONG":
             if current_price <= sl:
-                closed_info = paper_close_position(symbol, current_price, now_str, "SL")
+                closed_info = paper_close_position(symbol, sl, now_str, "SL")
             elif current_price >= tp:
-                closed_info = paper_close_position(symbol, current_price, now_str, "TP")
+                closed_info = paper_close_position(symbol, tp, now_str, "TP")
             elif signal and signal.get("type") == "SHORT":
                 closed_info = paper_close_position(symbol, current_price, now_str, "REVERSE")
 
         elif direction == "SHORT":
             if current_price >= sl:
-                closed_info = paper_close_position(symbol, current_price, now_str, "SL")
+                closed_info = paper_close_position(symbol, sl, now_str, "SL")
             elif current_price <= tp:
-                closed_info = paper_close_position(symbol, current_price, now_str, "TP")
+                closed_info = paper_close_position(symbol, tp, now_str, "TP")
             elif signal and signal.get("type") == "LONG":
                 closed_info = paper_close_position(symbol, current_price, now_str, "REVERSE")
 
+    # Nach möglichem Close neu prüfen
     pos = paper_get_open_position(symbol)
 
+    # -----------------------
+    # 2) NEUEN TRADE ÖFFNEN
+    # -----------------------
     if auto_enabled and signal and not pos:
-        signal_key = f"{symbol}_{signal['type']}_{df.index[-1]}"
-        last_signal_key = paper_get_setting("last_signal_key", "")
+        sig_type = signal.get("type")
 
-        if signal_key != last_signal_key:
-            cash = paper_get_cash()
-            risk_fraction = float(paper_get_setting("risk_fraction", 0.25) or 0.25)
-            order_value = cash * risk_fraction
-            qty = max(order_value / current_price, 0)
+        if sig_type not in ["LONG", "SHORT"]:
+            return opened_info, closed_info
 
-        if qty > 0:
-            # -----------------------
-            # SICHERHEITSSCHUTZ SL/TP
-            # -----------------------
-            sig_type = signal["type"]
-            sig_sl = float(signal["sl"])
-            sig_tp = float(signal["tp"])
-            sig_entry = float(current_price)
+        signal_time = signal.get("timestamp", now_str)
+        signal_key = f"{symbol}_{sig_type}_{signal_time}"
+        last_signal_key = paper_get_setting(f"last_signal_key_{symbol}", "")
 
-            valid_signal = True
+        if signal_key == last_signal_key:
+            return opened_info, closed_info
 
-            if sig_type == "LONG":
-                if not (sig_sl < sig_entry < sig_tp):
-                    valid_signal = False
-                    st.warning(
-                        f"Paper-Trade blockiert: LONG ungültig "
-                        f"(SL={sig_sl:.2f}, Entry={sig_entry:.2f}, TP={sig_tp:.2f})"
-                    )
+        cash = paper_get_cash()
+        risk_fraction = float(paper_get_setting("risk_fraction", 0.25) or 0.25)
+        order_value = cash * risk_fraction
+        qty = max(order_value / current_price, 0)
 
-            elif sig_type == "SHORT":
-                if not (sig_tp < sig_entry < sig_sl):
-                    valid_signal = False
-                    st.warning(
-                        f"Paper-Trade blockiert: SHORT ungültig "
-                        f"(TP={sig_tp:.2f}, Entry={sig_entry:.2f}, SL={sig_sl:.2f})"
-                    )
+        if qty <= 0:
+            return opened_info, closed_info
 
-            if valid_signal:
-                if sig_type == "LONG":
-                    paper_set_cash(cash - (qty * current_price))
+        sig_sl = float(signal["sl"])
+        sig_tp = float(signal["tp"])
+        sig_entry = float(current_price)
 
-                paper_open_position(
-                    ticker=symbol,
-                    direction=sig_type,
-                    qty=qty,
-                    entry_price=current_price,
-                    sl=sig_sl,
-                    tp=sig_tp,
-                    entry_time=now_str
-                )
+        valid_signal = True
 
-                paper_set_setting("last_signal_key", signal_key)
+        if sig_type == "LONG" and not (sig_sl < sig_entry < sig_tp):
+            valid_signal = False
+            st.warning(f"Paper-Trade blockiert: LONG ungültig (SL={sig_sl:.2f}, Entry={sig_entry:.2f}, TP={sig_tp:.2f})")
 
-                opened_info = {
-                    "ticker": symbol,
-                    "direction": sig_type,
-                    "qty": qty,
-                    "entry_price": current_price,
-                    "sl": sig_sl,
-                    "tp": sig_tp
-                }
+        elif sig_type == "SHORT" and not (sig_tp < sig_entry < sig_sl):
+            valid_signal = False
+            st.warning(f"Paper-Trade blockiert: SHORT ungültig (TP={sig_tp:.2f}, Entry={sig_entry:.2f}, SL={sig_sl:.2f})")
 
-                if notify:
-                    send_telegram(
-                        f"🧪 PAPER {sig_type} {symbol}\n"
-                        f"Entry: {current_price:.2f}\n"
-                        f"SL: {sig_sl:.2f}\n"
-                        f"TP: {sig_tp:.2f}\n"
-                        f"Qty: {qty:.4f}"
-                )
+        if not valid_signal:
+            return opened_info, closed_info
+
+        if sig_type == "LONG":
+            paper_set_cash(cash - (qty * current_price))
+
+        paper_open_position(
+            ticker=symbol,
+            direction=sig_type,
+            qty=qty,
+            entry_price=current_price,
+            sl=sig_sl,
+            tp=sig_tp,
+            entry_time=now_str
+        )
+
+        paper_set_setting(f"last_signal_key_{symbol}", signal_key)
+
+        opened_info = {
+            "ticker": symbol,
+            "direction": sig_type,
+            "qty": qty,
+            "entry_price": current_price,
+            "sl": sig_sl,
+            "tp": sig_tp
+        }
+
+        if notify:
+            send_telegram(
+                f"🧪 PAPER {sig_type} {symbol}\n"
+                f"Entry: {current_price:.2f}\n"
+                f"SL: {sig_sl:.2f}\n"
+                f"TP: {sig_tp:.2f}\n"
+                f"Qty: {qty:.4f}"
+            )
 
     return opened_info, closed_info
 
@@ -838,6 +845,20 @@ else:
 st.sidebar.markdown("---")
 st.sidebar.subheader("🧪 Paper Trading")
 
+current_paper_watchlist = paper_get_setting("paper_watchlist", "BTC-USD, TSLA, NVDA")
+
+paper_watchlist_input = st.sidebar.text_area(
+    "Paper Watchlist",
+    value=current_paper_watchlist,
+    key="paper_watchlist_input"
+)
+
+paper_watchlist = [
+    s.strip().upper()
+    for s in paper_watchlist_input.split(",")
+    if s.strip()
+]
+
 current_start_cash = float(paper_get_setting("start_cash", 10000) or 10000)
 current_risk_fraction = float(paper_get_setting("risk_fraction", 0.25) or 0.25)
 current_auto_mode = (paper_get_setting("auto_mode", "0") == "1")
@@ -873,6 +894,7 @@ paper_telegram = st.sidebar.checkbox(
 )
 
 if st.sidebar.button("💾 Paper Settings speichern"):
+    paper_set_setting("paper_watchlist", paper_watchlist_input)
     paper_set_setting("start_cash", paper_start_cash_input)
     if paper_get_setting("cash") is None:
         paper_set_setting("cash", paper_start_cash_input)
@@ -1159,8 +1181,8 @@ def process_symbol(s, data_all):
 
     rr = abs(tp - price_i) / abs(price_i - sl)
     total_score = max(long_score, short_score)
-    min_rr = 1.6 if total_score >= 9 else 1.4
-    signal_ok = (rr >= min_rr) and (total_score >= globals().get("scanner_min_score", 7))
+    min_score = int(paper_get_setting("scanner_min_score", 9) or 9)
+    signal_ok = (rr >= min_rr) and (total_score >= min_score)
 
     tags = []
     if breakout_long or breakout_short:
@@ -1285,14 +1307,23 @@ strategy_mode = st.sidebar.selectbox(
     key="strategy_mode"
 )
 
+# 🔹 gespeicherten Wert laden
+current_scanner_min_score = int(paper_get_setting("scanner_min_score", 9) or 9)
+
 scanner_min_score = st.sidebar.slider(
     "Scanner Mindestscore",
     min_value=6,
     max_value=10,
-    value=7,
+    value=current_scanner_min_score,
     step=1,
     key="scanner_min_score"
 )
+
+# 🔹 speichern wenn geändert
+if scanner_min_score != current_scanner_min_score:
+    paper_set_setting("scanner_min_score", scanner_min_score)
+    st.cache_data.clear()
+    st.rerun()
 
 backtest_enabled = st.sidebar.checkbox("Backtest anzeigen", value=True, key="backtest_enabled")
 backtest_bars = st.sidebar.slider(
@@ -2149,6 +2180,39 @@ def build_pullback_features(df):
 
 df = build_pullback_features(df)
 
+now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+paper_opened_all = []
+paper_closed_all = []
+
+symbols_to_watch = set(paper_watchlist)
+
+open_positions_df = paper_get_open_positions()
+if not open_positions_df.empty:
+    symbols_to_watch.update(open_positions_df["ticker"].dropna().astype(str).str.upper().tolist())
+
+for paper_symbol in symbols_to_watch:
+    df_fast = load_fast_price(paper_symbol)
+
+    if df_fast.empty:
+        continue
+
+    current_price_paper = float(df_fast["Close"].iloc[-1])
+
+    paper_opened, paper_closed = paper_process_symbol(
+        symbol=paper_symbol,
+        signal=None,
+        current_price=current_price_paper,
+        now_str=now_str,
+        auto_enabled=False,
+        notify=paper_telegram
+    )
+
+    if paper_opened:
+        paper_opened_all.append(paper_opened)
+
+    if paper_closed:
+        paper_closed_all.append(paper_closed)
 
 def get_smart_signal(df, i):
     long_score = df["LongScore"].iloc[i]
