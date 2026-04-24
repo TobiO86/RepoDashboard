@@ -1181,6 +1181,7 @@ def process_symbol(s, data_all):
 
     rr = abs(tp - price_i) / abs(price_i - sl)
     total_score = max(long_score, short_score)
+    min_rr = 1.6 if total_score >= 9 else 1.4
     min_score = int(paper_get_setting("scanner_min_score", 9) or 9)
     signal_ok = (rr >= min_rr) and (total_score >= min_score)
 
