@@ -1946,8 +1946,8 @@ for i in range(start, len(df)):
 # 🔹 16. SIGNAL GENERATION (STABLE)
 # =========================================================
 
-MIN_SCORE = 5
-DELTA_THRESHOLD = 2
+MIN_SCORE = 7
+DELTA_THRESHOLD = 3
 
 df["ScoreDelta"] = df["LongScore"] - df["ShortScore"]
 
@@ -2239,9 +2239,9 @@ def get_min_rr_for_entry(df, i):
         return 1.5
     return 1.3
 
-MIN_SCORE = 5
-DELTA_THRESHOLD = 2
-VOLUME_FACTOR = 1.2
+MIN_SCORE = 7
+DELTA_THRESHOLD = 3
+VOLUME_FACTOR = 1.5
 
 def get_entry_signal(df, i, bias, strategy_mode="Hybrid"):
     price = df["Close"].iloc[i]
@@ -2508,6 +2508,21 @@ paper_closed = None
 paper_auto_enabled = (paper_get_setting("auto_mode", "0") == "1")
 paper_notify = (paper_get_setting("paper_telegram", "0") == "1")
 now_str = datetime.now(pytz.timezone("America/New_York")).strftime("%Y-%m-%d %H:%M:%S %Z")
+
+# Nur US-RTH Auto-Trading
+if SESSION != "RTH":
+    signal = None
+
+# Nur Trendphase handeln
+if signal is not None and df["MarketRegime"].iloc[-1] != "TREND":
+    signal = None
+
+# Kein Entry, wenn Live-Preis zu weit vom Signalpreis weg ist
+if signal is not None:
+    signal_price = float(signal["price"])
+    atr_now = float(df["ATR"].iloc[-1])
+    if abs(float(current_price) - signal_price) > atr_now * 0.25:
+        signal = None
 
 paper_opened, paper_closed = paper_process_symbol(
     symbol=symbol,
