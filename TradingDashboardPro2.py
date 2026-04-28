@@ -1302,10 +1302,11 @@ show_rth_only_vwap = st.sidebar.checkbox("VWAP nur RTH", True)
 color_sessions = st.sidebar.checkbox("Sessions farbig", True)
 
 strategy_mode = st.sidebar.selectbox(
-    "Entry-Modus",
-    ["Breakout", "Pullback", "Hybrid"],
-    index=2,
-    key="strategy_mode"
+    "Strategie-Modus",
+    ["Auto Multi", "Trend", "Range", "Sweep", "Hybrid", "Breakout", "Pullback"],
+    index=0,
+    key="strategy_mode",
+    help="Auto Multi wählt je nach Marktphase automatisch Trend, Range oder Sweep. Hybrid nutzt Breakout/Pullback wie bisher."
 )
 
 # 🔹 gespeicherten Wert laden
@@ -2243,105 +2244,298 @@ MIN_SCORE = 7
 DELTA_THRESHOLD = 3
 VOLUME_FACTOR = 1.5
 
-def get_entry_signal(df, i, bias, strategy_mode="Hybrid"):
+def safe_num(x, default=np.nan):
+    try:
+        if pd.isna(x):
+            return default
+        return float(x)
+    except Exception:
+        return default
+
+
+def build_trade_plan(df, i, direction, strategy_name):
+    """Berechnet SL/TP direkt zur Strategie, damit Range/Sweep nicht von alten Signal-SL/TP abhängen."""
+    price = safe_num(df["Close"].iloc[i])
+    atr = safe_num(df["ATR"].iloc[i])
+    vwap = safe_num(df["VWAP_RTH"].iloc[i])
+
+    if np.isnan(price) or np.isnan(atr) or atr <= 0:
+        return np.nan, np.nan, 0.0
+
+    min_risk = atr * 0.6
+    max_risk = atr * 3.0
+    lookback_start = max(0, i - 12)
+
+    # RR-Ziele bewusst unterschiedlich je nach Strategie
+    if strategy_name == "Range":
+        rr_target = 1.25
+    elif strategy_name == "Sweep":
+        rr_target = 1.8
+    else:  # Trend / Breakout / Pullback / Hybrid
+        rr_target = 2.0
+
+    if direction == "LONG":
+        swing_low = safe_num(df["Low"].iloc[lookback_start:i].min(), price - atr)
+
+        if strategy_name == "Range":
+            sl = min(swing_low, price - min_risk)
+            risk = max(min_risk, min(price - sl, max_risk))
+            # In Range ist VWAP/Mitte oft realistischeres Ziel als riesiges RR
+            tp = max(vwap if not np.isnan(vwap) else price + risk * rr_target, price + risk * rr_target)
+        elif strategy_name == "Sweep":
+            sl = min(swing_low - atr * 0.15, price - min_risk)
+            risk = max(min_risk, min(price - sl, max_risk))
+            tp = price + risk * rr_target
+        else:
+            ema20 = safe_num(df["EMA20"].iloc[i], price)
+            sl = min(swing_low, vwap - atr * 0.4 if not np.isnan(vwap) else price - atr, ema20 - atr * 0.3)
+            if sl >= price:
+                sl = price - min_risk
+            risk = max(min_risk, min(price - sl, max_risk))
+            tp = price + risk * rr_target
+
+        if not (sl < price < tp):
+            sl = price - min_risk
+            tp = price + min_risk * rr_target
+        rr = abs(tp - price) / abs(price - sl) if price != sl else 0.0
+        return sl, tp, rr
+
+    if direction == "SHORT":
+        swing_high = safe_num(df["High"].iloc[lookback_start:i].max(), price + atr)
+
+        if strategy_name == "Range":
+            sl = max(swing_high, price + min_risk)
+            risk = max(min_risk, min(sl - price, max_risk))
+            tp = min(vwap if not np.isnan(vwap) else price - risk * rr_target, price - risk * rr_target)
+        elif strategy_name == "Sweep":
+            sl = max(swing_high + atr * 0.15, price + min_risk)
+            risk = max(min_risk, min(sl - price, max_risk))
+            tp = price - risk * rr_target
+        else:
+            ema20 = safe_num(df["EMA20"].iloc[i], price)
+            sl = max(swing_high, vwap + atr * 0.4 if not np.isnan(vwap) else price + atr, ema20 + atr * 0.3)
+            if sl <= price:
+                sl = price + min_risk
+            risk = max(min_risk, min(sl - price, max_risk))
+            tp = price - risk * rr_target
+
+        if not (tp < price < sl):
+            sl = price + min_risk
+            tp = price - min_risk * rr_target
+        rr = abs(tp - price) / abs(price - sl) if price != sl else 0.0
+        return sl, tp, rr
+
+    return np.nan, np.nan, 0.0
+
+
+def is_pullback_long(df, i):
+    if i <= 0:
+        return False
     price = df["Close"].iloc[i]
+    prev_price = df["Close"].iloc[i-1]
+    ema20 = df["EMA20"].iloc[i]
     vwap = df["VWAP_RTH"].iloc[i]
+    atr = df["ATR"].iloc[i]
+    if pd.isna(atr) or atr <= 0 or pd.isna(vwap):
+        return False
 
-    long_score = df["LongScore"].iloc[i]
-    short_score = df["ShortScore"].iloc[i]
-    delta = long_score - short_score
+    touched_zone = (
+        df["Low"].iloc[i] <= ema20 + atr * 0.15 or
+        df["Low"].iloc[i] <= vwap + atr * 0.15
+    )
+    reclaim = price > ema20 and price > vwap and price > prev_price
+    return bool(touched_zone and reclaim)
 
-    volume = df["Volume"].iloc[i]
-    avg_volume = df["Volume"].rolling(20).mean().iloc[i]
 
-    orb_high = df["ORB_High"].iloc[i]
-    orb_low = df["ORB_Low"].iloc[i]
+def is_pullback_short(df, i):
+    if i <= 0:
+        return False
+    price = df["Close"].iloc[i]
+    prev_price = df["Close"].iloc[i-1]
+    ema20 = df["EMA20"].iloc[i]
+    vwap = df["VWAP_RTH"].iloc[i]
+    atr = df["ATR"].iloc[i]
+    if pd.isna(atr) or atr <= 0 or pd.isna(vwap):
+        return False
 
-    sl = df["SL"].iloc[i]
-    tp = df["TP"].iloc[i]
+    touched_zone = (
+        df["High"].iloc[i] >= ema20 - atr * 0.15 or
+        df["High"].iloc[i] >= vwap - atr * 0.15
+    )
+    reject = price < ema20 and price < vwap and price < prev_price
+    return bool(touched_zone and reject)
 
-    if np.isnan(sl) or np.isnan(tp) or np.isnan(vwap):
+
+def get_entry_signal(df, i, bias, strategy_mode="Auto Multi"):
+    if i < 30:
         return None
 
-    rr = abs((tp - price) / (price - sl)) if price != sl else 0
-    min_rr = get_min_rr_for_entry(df, i)
+    price = safe_num(df["Close"].iloc[i])
+    vwap = safe_num(df["VWAP_RTH"].iloc[i])
+    atr = safe_num(df["ATR"].iloc[i])
 
-    breakout_long = (
+    if np.isnan(price) or np.isnan(vwap) or np.isnan(atr) or atr <= 0:
+        return None
+
+    long_score = safe_num(df["LongScore"].iloc[i], 0)
+    short_score = safe_num(df["ShortScore"].iloc[i], 0)
+    delta = long_score - short_score
+    volume = safe_num(df["Volume"].iloc[i], 0)
+    avg_volume = safe_num(df["Volume"].rolling(20).mean().iloc[i], 0)
+    rel_vol_ok = avg_volume > 0 and volume > avg_volume * VOLUME_FACTOR
+
+    orb_high = safe_num(df["ORB_High"].iloc[i])
+    orb_low = safe_num(df["ORB_Low"].iloc[i])
+    regime = str(df["MarketRegime"].iloc[i]) if "MarketRegime" in df.columns else "TREND"
+    rsi = safe_num(df["RSI"].iloc[i], 50)
+    adx = safe_num(df["ADX"].iloc[i], 0)
+
+    prev = df.iloc[i-1]
+    curr = df.iloc[i]
+    mode = (strategy_mode or "Auto Multi").lower()
+
+    def make_signal(direction, strategy, reason, min_rr_override=None):
+        sl, tp, rr = build_trade_plan(df, i, direction, strategy)
+        if np.isnan(sl) or np.isnan(tp):
+            return None
+        min_rr = get_min_rr_for_entry(df, i) if min_rr_override is None else min_rr_override
+        if rr < min_rr:
+            return None
+        return {
+            "type": direction,
+            "price": price,
+            "sl": sl,
+            "tp": tp,
+            "rr": rr,
+            "delta": delta,
+            "strategy": strategy,
+            "entry_reason": reason,
+            "timestamp": df.index[i]
+        }
+
+    # 1) TREND CONTINUATION: Nur wenn Markt trendet. Pullback oder bestätigter ORB/Breakout.
+    trend_long = (
+        regime == "TREND" and
         bias == "LONG" and
         long_score >= MIN_SCORE and
         delta >= DELTA_THRESHOLD and
         price > vwap and
-        price > orb_high and
-        volume > avg_volume * VOLUME_FACTOR and
-        rr >= min_rr
+        df["EMA20"].iloc[i] > df["EMA50"].iloc[i] and
+        (adx >= 20 or bool(df["Trend_Long"].iloc[i])) and
+        rel_vol_ok and
+        (
+            is_pullback_long(df, i) or
+            (not np.isnan(orb_high) and price > orb_high and curr["Close"] > curr["Open"])
+        )
     )
 
-    breakout_short = (
+    trend_short = (
+        regime == "TREND" and
         bias == "SHORT" and
         short_score >= MIN_SCORE and
         delta <= -DELTA_THRESHOLD and
         price < vwap and
-        price < orb_low and
-        volume > avg_volume * VOLUME_FACTOR and
-        rr >= min_rr
+        df["EMA20"].iloc[i] < df["EMA50"].iloc[i] and
+        (adx >= 20 or bool(df["Trend_Short"].iloc[i])) and
+        rel_vol_ok and
+        (
+            is_pullback_short(df, i) or
+            (not np.isnan(orb_low) and price < orb_low and curr["Close"] < curr["Open"])
+        )
     )
 
-    pullback_long = (
-        bias == "LONG" and
-        long_score >= MIN_SCORE and
-        delta >= DELTA_THRESHOLD and
-        bool(df["PullbackLongReady"].iloc[i]) and
-        rr >= max(1.2, min_rr - 0.2)
+    # 2) RANGE MEAN REVERSION: Nur in Range. Weg von VWAP/Band, dann Rücklauf zur Mitte.
+    range_long = (
+        regime == "RANGE" and
+        long_score >= max(5, MIN_SCORE - 2) and
+        price < vwap and
+        (
+            bool(df["VWAP_Extreme_Low"].iloc[i]) or
+            price <= safe_num(df["BB_LOWER"].iloc[i], price - atr)
+        ) and
+        rsi < 45 and
+        curr["Close"] > curr["Open"]
     )
 
-    pullback_short = (
-        bias == "SHORT" and
-        short_score >= MIN_SCORE and
-        delta <= -DELTA_THRESHOLD and
-        bool(df["PullbackShortReady"].iloc[i]) and
-        rr >= max(1.2, min_rr - 0.2)
+    range_short = (
+        regime == "RANGE" and
+        short_score >= max(5, MIN_SCORE - 2) and
+        price > vwap and
+        (
+            bool(df["VWAP_Extreme_High"].iloc[i]) or
+            price >= safe_num(df["BB_UPPER"].iloc[i], price + atr)
+        ) and
+        rsi > 55 and
+        curr["Close"] < curr["Open"]
     )
 
-    mode = (strategy_mode or "Hybrid").lower()
+    # 3) LIQUIDITY SWEEP / STOP HUNT: Fake Breakout zurück in die Range/unter VWAP/über VWAP.
+    sweep_long = (
+        bool(prev.get("sweep_low", False)) and
+        curr["Close"] > prev["Close"] and
+        curr["Close"] > curr["Open"] and
+        (price > vwap or bool(curr.get("VWAP_Reclaim_Long", False))) and
+        long_score >= max(5, MIN_SCORE - 2)
+    )
 
-    if mode == "breakout":
-        use_long = breakout_long
-        use_short = breakout_short
-        strategy_tag = "Breakout"
-    elif mode == "pullback":
-        use_long = pullback_long
-        use_short = pullback_short
-        strategy_tag = "Pullback"
-    else:
-        use_long = breakout_long or pullback_long
-        use_short = breakout_short or pullback_short
-        strategy_tag = "Hybrid"
+    sweep_short = (
+        bool(prev.get("sweep_high", False)) and
+        curr["Close"] < prev["Close"] and
+        curr["Close"] < curr["Open"] and
+        (price < vwap or bool(curr.get("VWAP_Reclaim_Short", False))) and
+        short_score >= max(5, MIN_SCORE - 2)
+    )
 
-    if use_long:
-        return {
-            "type": "LONG",
-            "price": price,
-            "sl": sl,
-            "tp": tp,
-            "rr": rr,
-            "delta": delta,
-            "strategy": strategy_tag,
-            "entry_reason": "Pullback" if pullback_long and not breakout_long else "Breakout"
-        }
+    # Auswahl: Auto priorisiert Sweep, dann Range, dann Trend.
+    candidates = []
 
-    if use_short:
-        return {
-            "type": "SHORT",
-            "price": price,
-            "sl": sl,
-            "tp": tp,
-            "rr": rr,
-            "delta": delta,
-            "strategy": strategy_tag,
-            "entry_reason": "Pullback" if pullback_short and not breakout_short else "Breakout"
-        }
+    if mode in ["auto multi", "auto", "multi", "sweep"]:
+        if sweep_long:
+            sig = make_signal("LONG", "Sweep", "Liquidity Sweep Long", 1.4)
+            if sig: candidates.append(sig)
+        if sweep_short:
+            sig = make_signal("SHORT", "Sweep", "Liquidity Sweep Short", 1.4)
+            if sig: candidates.append(sig)
 
-    return None
+    if mode in ["auto multi", "auto", "multi", "range"]:
+        if range_long:
+            sig = make_signal("LONG", "Range", "Mean Reversion Long", 1.1)
+            if sig: candidates.append(sig)
+        if range_short:
+            sig = make_signal("SHORT", "Range", "Mean Reversion Short", 1.1)
+            if sig: candidates.append(sig)
+
+    if mode in ["auto multi", "auto", "multi", "trend", "hybrid", "breakout", "pullback"]:
+        # Breakout/Pullback-Modi filtern innerhalb der Trend-Logik genauer.
+        if trend_long:
+            reason = "Pullback Long" if is_pullback_long(df, i) else "Breakout Long"
+            if mode == "breakout" and "Breakout" not in reason:
+                pass
+            elif mode == "pullback" and "Pullback" not in reason:
+                pass
+            else:
+                sig = make_signal("LONG", "Trend", reason, None)
+                if sig: candidates.append(sig)
+        if trend_short:
+            reason = "Pullback Short" if is_pullback_short(df, i) else "Breakout Short"
+            if mode == "breakout" and "Breakout" not in reason:
+                pass
+            elif mode == "pullback" and "Pullback" not in reason:
+                pass
+            else:
+                sig = make_signal("SHORT", "Trend", reason, None)
+                if sig: candidates.append(sig)
+
+    if not candidates:
+        return None
+
+    # Bestes Signal: höchste Kombination aus RR + Scorequalität.
+    def rank(sig):
+        score = long_score if sig["type"] == "LONG" else short_score
+        priority = {"Sweep": 3, "Range": 2, "Trend": 1}.get(sig.get("strategy"), 0)
+        return (priority, score, sig.get("rr", 0))
+
+    return sorted(candidates, key=rank, reverse=True)[0]
 
 def build_trade_table_from_signals(df, strategy_mode="Hybrid", max_bars=None):
     if df.empty:
