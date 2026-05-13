@@ -12,6 +12,538 @@ import pytz
 import os
 import sqlite3
 from concurrent.futures import ThreadPoolExecutor
+import sys
+import time as _time
+import logging
+
+
+
+# =========================================================
+# 🔹 STANDALONE PAPER WORKER MODE
+# Start: python TradingDashboardPro2.py --worker
+# Zweck: Paper-Trading läuft unabhängig vom Streamlit-Browser.
+# =========================================================
+
+
+WORKER_MODE = "--worker" in sys.argv
+
+if WORKER_MODE:
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(message)s"
+    )
+
+    def w_get_conn():
+        os.makedirs("data", exist_ok=True)
+        return sqlite3.connect("data/alerts.db", check_same_thread=False)
+
+    def w_init_db():
+        conn = w_get_conn()
+        c = conn.cursor()
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS paper_settings (
+                key TEXT PRIMARY KEY,
+                value TEXT
+            )
+        """)
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS paper_positions (
+                ticker TEXT PRIMARY KEY,
+                direction TEXT,
+                qty REAL,
+                entry_price REAL,
+                entry_time TEXT,
+                sl REAL,
+                tp REAL,
+                status TEXT DEFAULT 'OPEN'
+            )
+        """)
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS paper_trades (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                ticker TEXT,
+                direction TEXT,
+                qty REAL,
+                entry_price REAL,
+                entry_time TEXT,
+                exit_price REAL,
+                exit_time TEXT,
+                sl REAL,
+                tp REAL,
+                pnl REAL,
+                pnl_pct REAL,
+                status TEXT,
+                exit_reason TEXT
+            )
+        """)
+        conn.commit()
+        conn.close()
+
+    def w_get_setting(key, default=None):
+        conn = w_get_conn()
+        c = conn.cursor()
+        c.execute("SELECT value FROM paper_settings WHERE key = ?", (key,))
+        row = c.fetchone()
+        conn.close()
+        return row[0] if row else default
+
+    def w_set_setting(key, value):
+        conn = w_get_conn()
+        c = conn.cursor()
+        c.execute(
+            "INSERT OR REPLACE INTO paper_settings (key, value) VALUES (?, ?)",
+            (key, str(value))
+        )
+        conn.commit()
+        conn.close()
+
+    def w_init_defaults():
+        if w_get_setting("cash") is None:
+            w_set_setting("cash", 10000)
+        if w_get_setting("start_cash") is None:
+            w_set_setting("start_cash", 10000)
+        if w_get_setting("risk_fraction") is None:
+            w_set_setting("risk_fraction", 0.25)
+        if w_get_setting("auto_mode") is None:
+            w_set_setting("auto_mode", "0")
+        if w_get_setting("paper_watchlist") is None:
+            w_set_setting("paper_watchlist", "BTC-USD, TSLA, NVDA")
+
+    def w_get_cash():
+        return float(w_get_setting("cash", 10000) or 10000)
+
+    def w_set_cash(value):
+        w_set_setting("cash", round(float(value), 2))
+
+    def w_get_open_position(ticker):
+        conn = w_get_conn()
+        df_pos = pd.read_sql_query(
+            "SELECT * FROM paper_positions WHERE ticker = ? AND status = 'OPEN'",
+            conn,
+            params=(ticker,)
+        )
+        conn.close()
+        return None if df_pos.empty else df_pos.iloc[0].to_dict()
+
+    def w_get_open_positions():
+        conn = w_get_conn()
+        df_pos = pd.read_sql_query(
+            "SELECT * FROM paper_positions WHERE status = 'OPEN' ORDER BY entry_time DESC",
+            conn
+        )
+        conn.close()
+        return df_pos
+
+    def w_open_position(ticker, direction, qty, entry_price, sl, tp, entry_time):
+        conn = w_get_conn()
+        c = conn.cursor()
+        c.execute("""
+            INSERT OR REPLACE INTO paper_positions
+            (ticker, direction, qty, entry_price, entry_time, sl, tp, status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, 'OPEN')
+        """, (ticker, direction, qty, entry_price, entry_time, sl, tp))
+        c.execute("""
+            INSERT INTO paper_trades
+            (ticker, direction, qty, entry_price, entry_time, sl, tp, status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, 'OPEN')
+        """, (ticker, direction, qty, entry_price, entry_time, sl, tp))
+        conn.commit()
+        conn.close()
+
+    def w_close_position(ticker, exit_price, exit_time, exit_reason):
+        pos = w_get_open_position(ticker)
+        if not pos:
+            return None
+
+        qty = float(pos["qty"])
+        entry_price = float(pos["entry_price"])
+        direction = pos["direction"]
+
+        if direction == "LONG":
+            pnl = (exit_price - entry_price) * qty
+            cash_delta = exit_price * qty
+            pnl_pct = (exit_price - entry_price) / entry_price * 100
+        else:
+            pnl = (entry_price - exit_price) * qty
+            cash_delta = entry_price * qty + pnl
+            pnl_pct = (entry_price - exit_price) / entry_price * 100
+
+        conn = w_get_conn()
+        c = conn.cursor()
+        c.execute("UPDATE paper_positions SET status = 'CLOSED' WHERE ticker = ?", (ticker,))
+        c.execute("""
+            UPDATE paper_trades
+            SET exit_price = ?, exit_time = ?, pnl = ?, pnl_pct = ?, status = 'CLOSED', exit_reason = ?
+            WHERE id = (
+                SELECT id FROM paper_trades
+                WHERE ticker = ? AND status = 'OPEN'
+                ORDER BY id DESC LIMIT 1
+            )
+        """, (exit_price, exit_time, pnl, pnl_pct, exit_reason, ticker))
+        conn.commit()
+        conn.close()
+        w_set_cash(w_get_cash() + cash_delta)
+        return {"ticker": ticker, "direction": direction, "pnl": pnl, "pnl_pct": pnl_pct, "exit_reason": exit_reason, "exit_price": exit_price}
+
+    def w_secret(name, default=None):
+        value = os.environ.get(name)
+        if value:
+            return value
+        secrets_file = os.path.join(".streamlit", "secrets.toml")
+        try:
+            import tomllib
+            with open(secrets_file, "rb") as f:
+                data = tomllib.load(f)
+            return data.get(name, default)
+        except Exception:
+            return default
+
+    def w_send_telegram(msg):
+        token = w_secret("TELEGRAM_TOKEN")
+        chat_id = w_secret("TELEGRAM_CHAT_ID")
+        if not token or not chat_id:
+            logging.info("Telegram übersprungen: TELEGRAM_TOKEN/TELEGRAM_CHAT_ID fehlt")
+            return
+        try:
+            requests.post(
+                f"https://api.telegram.org/bot{token}/sendMessage",
+                data={"chat_id": chat_id, "text": msg},
+                timeout=5
+            )
+        except Exception as e:
+            logging.warning("Telegram Error: %s", e)
+
+    def w_get_market_session():
+        et = pytz.timezone("America/New_York")
+        now = datetime.now(et)
+        if now.weekday() >= 5:
+            return "WEEKEND"
+        current_time = now.time()
+        if time(4, 0) <= current_time < time(9, 30):
+            return "PREMARKET"
+        if time(9, 30) <= current_time < time(16, 0):
+            return "RTH"
+        if time(16, 0) <= current_time < time(20, 0):
+            return "AFTERHOURS"
+        return "CLOSED"
+
+    def w_compute_atr(df):
+        tr = np.maximum(
+            df["High"] - df["Low"],
+            np.maximum(abs(df["High"] - df["Close"].shift(1)), abs(df["Low"] - df["Close"].shift(1)))
+        )
+        return tr.ewm(span=14, adjust=False).mean()
+
+    def w_mark_sessions(df):
+        if not isinstance(df.index, pd.DatetimeIndex):
+            df.index = pd.to_datetime(df.index, errors="coerce")
+        if df.index.tz is None:
+            df.index = df.index.tz_localize("UTC")
+        df.index = df.index.tz_convert("America/New_York")
+        times = df.index.time
+        df["Session"] = np.where(
+            (times >= time(4, 0)) & (times < time(9, 30)),
+            "PREMARKET",
+            np.where((times >= time(16, 0)) & (times < time(20, 0)), "AFTERHOURS", "RTH")
+        )
+        return df
+
+    def w_download_symbols(symbols):
+        data_all = {}
+        symbols = [s for s in symbols if s]
+        if not symbols:
+            return data_all
+        try:
+            d = yf.download(
+                tickers=" ".join(symbols),
+                period="5d",
+                interval="5m",
+                group_by="ticker",
+                threads=True,
+                progress=False,
+                prepost=True
+            )
+        except Exception as e:
+            logging.warning("yfinance download failed: %s", e)
+            return data_all
+
+        if d is None or d.empty:
+            return data_all
+
+        if isinstance(d.columns, pd.MultiIndex):
+            for ticker in symbols:
+                if ticker in d.columns.get_level_values(0):
+                    df_t = d[ticker].copy()
+                    if isinstance(df_t.columns, pd.MultiIndex):
+                        df_t.columns = df_t.columns.get_level_values(0)
+                    if "Close" in df_t.columns:
+                        df_t = df_t.dropna(subset=["Close"])
+                    if not df_t.empty:
+                        data_all[ticker] = df_t
+        else:
+            d = d.copy()
+            if isinstance(d.columns, pd.MultiIndex):
+                d.columns = d.columns.get_level_values(0)
+            if "Close" in d.columns:
+                d = d.dropna(subset=["Close"])
+            if not d.empty:
+                data_all[symbols[0]] = d
+        return data_all
+
+    def w_process_symbol(symbol, data_all):
+        df_s = data_all.get(symbol)
+        if df_s is None or len(df_s) < 60:
+            return None
+        df_s = df_s.copy()
+        if isinstance(df_s.columns, pd.MultiIndex):
+            df_s.columns = df_s.columns.get_level_values(0)
+        for col in ["Open", "High", "Low", "Close", "Volume"]:
+            if col not in df_s.columns:
+                return None
+        df_s = df_s.dropna(subset=["Open", "High", "Low", "Close"])
+        if df_s.empty:
+            return None
+
+        df_s = w_mark_sessions(df_s)
+        df_s["Volume"] = df_s["Volume"].replace(0, np.nan).ffill().fillna(0)
+        df_s["ATR"] = w_compute_atr(df_s)
+        df_s["ATR_pct"] = df_s["ATR"] / df_s["Close"].replace(0, np.nan)
+        tp = (df_s["High"] + df_s["Low"] + df_s["Close"]) / 3
+        df_s["Vol_RTH"] = np.where(df_s["Session"] == "RTH", df_s["Volume"], np.nan)
+        df_s["Vol_Avg_RTH"] = pd.Series(df_s["Vol_RTH"], index=df_s.index).rolling(20, min_periods=5).mean()
+        vol_rth = np.where(df_s["Session"] == "RTH", df_s["Volume"], 0)
+        df_s["VWAP_RTH"] = (
+            pd.Series(tp * vol_rth, index=df_s.index).groupby(df_s.index.date).cumsum() /
+            pd.Series(vol_rth, index=df_s.index).groupby(df_s.index.date).cumsum().replace(0, np.nan)
+        )
+        df_s["EMA20"] = df_s["Close"].ewm(span=20, adjust=False).mean()
+        df_s["EMA50"] = df_s["Close"].ewm(span=50, adjust=False).mean()
+        df_s["EMA200"] = df_s["Close"].ewm(span=200, adjust=False).mean()
+        delta_close = df_s["Close"].diff()
+        gain = delta_close.clip(lower=0)
+        loss = -delta_close.clip(upper=0)
+        rs = gain.ewm(alpha=1/14, adjust=False).mean() / loss.ewm(alpha=1/14, adjust=False).mean().replace(0, 1e-10)
+        df_s["RSI"] = 100 - (100 / (1 + rs))
+        up_move = df_s["High"].diff()
+        down_move = -df_s["Low"].diff()
+        plus_dm = pd.Series(np.where((up_move > down_move) & (up_move > 0), up_move, 0), index=df_s.index).ewm(span=14, adjust=False).mean()
+        minus_dm = pd.Series(np.where((down_move > up_move) & (down_move > 0), down_move, 0), index=df_s.index).ewm(span=14, adjust=False).mean()
+        plus_di = 100 * plus_dm / df_s["ATR"].replace(0, np.nan)
+        minus_di = 100 * minus_dm / df_s["ATR"].replace(0, np.nan)
+        dx = (np.abs(plus_di - minus_di) / (plus_di + minus_di).replace(0, np.nan)) * 100
+        df_s["ADX"] = dx.ewm(span=14, adjust=False).mean().fillna(0)
+
+        price_i = float(df_s["Close"].iloc[-1])
+        atr_i = float(df_s["ATR"].iloc[-1])
+        vwap_i = df_s["VWAP_RTH"].iloc[-1]
+        avg_vol = df_s["Vol_Avg_RTH"].iloc[-1]
+        if pd.isna(avg_vol) or avg_vol == 0 or pd.isna(vwap_i) or pd.isna(atr_i) or atr_i <= 0:
+            return None
+
+        ema20_i = df_s["EMA20"].iloc[-1]
+        trend_up = bool(df_s["EMA20"].iloc[-1] > df_s["EMA50"].iloc[-1] > df_s["EMA200"].iloc[-1])
+        trend_down = bool(df_s["EMA20"].iloc[-1] < df_s["EMA50"].iloc[-1] < df_s["EMA200"].iloc[-1])
+        strong_trend = bool(df_s["ADX"].iloc[-1] > 22)
+        recent = df_s.tail(20)
+        breakout_long = price_i > recent["High"].iloc[:-1].max() if len(recent) > 1 else False
+        breakout_short = price_i < recent["Low"].iloc[:-1].min() if len(recent) > 1 else False
+        rel_vol = df_s["Volume"].iloc[-1] / avg_vol if avg_vol else np.nan
+        atr_pct = df_s["ATR_pct"].iloc[-1]
+        dollar_vol = price_i * avg_vol
+        pullback_long = trend_up and price_i > vwap_i and abs(price_i - ema20_i) <= atr_i * 0.6
+        pullback_short = trend_down and price_i < vwap_i and abs(price_i - ema20_i) <= atr_i * 0.6
+
+        long_score = short_score = 0
+        if dollar_vol > 5_000_000:
+            long_score += 1; short_score += 1
+        if dollar_vol > 20_000_000:
+            long_score += 1; short_score += 1
+        if pd.notna(rel_vol) and rel_vol > 1.2:
+            long_score += 1; short_score += 1
+        if pd.notna(rel_vol) and rel_vol > 1.8:
+            long_score += 1; short_score += 1
+        if pd.notna(atr_pct) and atr_pct > 0.003:
+            long_score += 1; short_score += 1
+        if pd.notna(atr_pct) and atr_pct > 0.008:
+            long_score += 1; short_score += 1
+        if trend_up:
+            long_score += 2
+        if trend_down:
+            short_score += 2
+        if strong_trend and trend_up:
+            long_score += 1
+        if strong_trend and trend_down:
+            short_score += 1
+        rsi_i = df_s["RSI"].iloc[-1]
+        if rsi_i > 55:
+            long_score += 1
+        elif rsi_i < 45:
+            short_score += 1
+        if price_i > vwap_i:
+            long_score += 1
+        else:
+            short_score += 1
+        if breakout_long:
+            long_score += 2
+        if breakout_short:
+            short_score += 2
+        if pullback_long:
+            long_score += 2
+        if pullback_short:
+            short_score += 2
+
+        setup = "LONG" if long_score > short_score else "SHORT"
+        min_risk = atr_i * 0.5
+        max_risk = atr_i * 3
+        if setup == "LONG":
+            swing_low = df_s["Low"].iloc[max(0, len(df_s)-11):len(df_s)-1].min()
+            if pd.isna(swing_low):
+                swing_low = price_i - atr_i
+            sl = min(swing_low, vwap_i - atr_i * 0.5, ema20_i - atr_i * 0.3)
+            if sl >= price_i:
+                sl = price_i - min_risk
+            risk = max(min_risk, min(price_i - sl, max_risk))
+            tp_out = price_i + risk * (2.2 if breakout_long else 1.8)
+        else:
+            swing_high = df_s["High"].iloc[max(0, len(df_s)-11):len(df_s)-1].max()
+            if pd.isna(swing_high):
+                swing_high = price_i + atr_i
+            sl = max(swing_high, vwap_i + atr_i * 0.5, ema20_i + atr_i * 0.3)
+            if sl <= price_i:
+                sl = price_i + min_risk
+            risk = max(min_risk, min(sl - price_i, max_risk))
+            tp_out = price_i - risk * (2.2 if breakout_short else 1.8)
+
+        rr = abs(tp_out - price_i) / abs(price_i - sl) if price_i != sl else 0
+        total_score = max(long_score, short_score)
+        min_rr = 1.6 if total_score >= 9 else 1.4
+        min_score = int(w_get_setting("scanner_min_score", 9) or 9)
+        signal_ok = (rr >= min_rr) and (total_score >= min_score)
+
+        return {
+            "symbol": symbol,
+            "type": setup,
+            "setup": setup,
+            "price": price_i,
+            "sl": float(sl),
+            "tp": float(tp_out),
+            "rr": float(rr),
+            "score": int(total_score),
+            "signal_ok": bool(signal_ok),
+            "timestamp": str(df_s.index[-1])
+        }
+
+    def w_process_paper_symbol(symbol, signal, current_price, now_str, auto_enabled, notify):
+        pos = w_get_open_position(symbol)
+        closed_info = None
+        opened_info = None
+
+        if pos:
+            direction = pos["direction"]
+            sl = float(pos["sl"])
+            tp = float(pos["tp"])
+            if direction == "LONG":
+                if current_price <= sl:
+                    closed_info = w_close_position(symbol, sl, now_str, "SL")
+                elif current_price >= tp:
+                    closed_info = w_close_position(symbol, tp, now_str, "TP")
+                elif signal and signal.get("type") == "SHORT":
+                    closed_info = w_close_position(symbol, current_price, now_str, "REVERSE")
+            elif direction == "SHORT":
+                if current_price >= sl:
+                    closed_info = w_close_position(symbol, sl, now_str, "SL")
+                elif current_price <= tp:
+                    closed_info = w_close_position(symbol, tp, now_str, "TP")
+                elif signal and signal.get("type") == "LONG":
+                    closed_info = w_close_position(symbol, current_price, now_str, "REVERSE")
+
+        pos = w_get_open_position(symbol)
+        if auto_enabled and signal and signal.get("signal_ok") and not pos:
+            sig_type = signal.get("type")
+            signal_key = f"{symbol}_{sig_type}_{signal.get('timestamp', now_str)}"
+            if signal_key == w_get_setting(f"last_signal_key_{symbol}", ""):
+                return opened_info, closed_info
+            cash = w_get_cash()
+            risk_fraction = float(w_get_setting("risk_fraction", 0.25) or 0.25)
+            qty = max((cash * risk_fraction) / current_price, 0)
+            if qty <= 0:
+                return opened_info, closed_info
+            sig_sl = float(signal["sl"])
+            sig_tp = float(signal["tp"])
+            if sig_type == "LONG" and not (sig_sl < current_price < sig_tp):
+                logging.info("%s LONG blockiert: SL/Entry/TP ungültig", symbol)
+                return opened_info, closed_info
+            if sig_type == "SHORT" and not (sig_tp < current_price < sig_sl):
+                logging.info("%s SHORT blockiert: TP/Entry/SL ungültig", symbol)
+                return opened_info, closed_info
+            if sig_type == "LONG":
+                w_set_cash(cash - qty * current_price)
+            w_open_position(symbol, sig_type, qty, current_price, sig_sl, sig_tp, now_str)
+            w_set_setting(f"last_signal_key_{symbol}", signal_key)
+            opened_info = {"ticker": symbol, "direction": sig_type, "qty": qty, "entry_price": current_price, "sl": sig_sl, "tp": sig_tp}
+            if notify:
+                w_send_telegram(f"🧪 PAPER {sig_type} {symbol}\nEntry: {current_price:.2f}\nSL: {sig_sl:.2f}\nTP: {sig_tp:.2f}\nQty: {qty:.4f}")
+
+        if closed_info and notify:
+            w_send_telegram(f"🧪 PAPER CLOSED {closed_info['direction']} {symbol}\nExit: {closed_info['exit_price']:.2f}\nGrund: {closed_info['exit_reason']}\nPnL: {closed_info['pnl']:.2f} ({closed_info['pnl_pct']:.2f}%)")
+        return opened_info, closed_info
+
+    def w_get_symbols_to_watch():
+        watchlist_raw = w_get_setting("paper_watchlist", "BTC-USD, TSLA, NVDA")
+        symbols = {s.strip().upper() for s in watchlist_raw.split(",") if s.strip()}
+        open_positions = w_get_open_positions()
+        if not open_positions.empty:
+            symbols.update(open_positions["ticker"].dropna().astype(str).str.upper().tolist())
+        session = w_get_market_session()
+        if session == "WEEKEND":
+            symbols = {s for s in symbols if "USD" in s or "=F" in s}
+        return sorted(symbols)
+
+    def w_run_once():
+        auto_enabled = (w_get_setting("auto_mode", "0") == "1")
+        notify = (w_get_setting("paper_telegram", "0") == "1")
+        symbols = w_get_symbols_to_watch()
+        if not symbols:
+            logging.info("Keine Paper-Watchlist Symbole")
+            return
+        data_all = w_download_symbols(symbols)
+        now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        opened_count = 0
+        closed_count = 0
+        for symbol in symbols:
+            df_s = data_all.get(symbol)
+            if df_s is None or df_s.empty or "Close" not in df_s.columns:
+                continue
+            close = df_s["Close"]
+            if isinstance(close, pd.DataFrame):
+                close = close.iloc[:, 0]
+            current_price = float(close.dropna().iloc[-1])
+            signal = w_process_symbol(symbol, data_all)
+            if not auto_enabled:
+                signal = None
+            opened, closed = w_process_paper_symbol(symbol, signal, current_price, now_str, auto_enabled, notify)
+            if opened:
+                opened_count += 1
+                logging.info("OPEN %s %s Entry %.2f SL %.2f TP %.2f", opened["direction"], symbol, opened["entry_price"], opened["sl"], opened["tp"])
+            if closed:
+                closed_count += 1
+                logging.info("CLOSE %s %s Grund %s PnL %.2f", closed["direction"], symbol, closed["exit_reason"], closed["pnl"])
+        logging.info("Worker Zyklus fertig: symbols=%s auto=%s opened=%s closed=%s", len(symbols), auto_enabled, opened_count, closed_count)
+
+    def w_run_forever():
+        w_init_db()
+        w_init_defaults()
+        interval_sec = int(os.environ.get("PAPER_WORKER_INTERVAL", "15"))
+        logging.info("Paper Worker gestartet. Intervall=%ss", interval_sec)
+        while True:
+            try:
+                w_run_once()
+            except Exception as e:
+                logging.exception("Paper Worker Fehler: %s", e)
+            _time.sleep(interval_sec)
+
+    w_run_forever()
+    sys.exit(0)
 
 st.set_page_config(layout="wide")
 
@@ -212,12 +744,14 @@ def paper_close_position(ticker, exit_price, exit_time, exit_reason):
     entry_price = float(pos["entry_price"])
     direction = pos["direction"]
 
+    position_value = entry_price * qty
+
     if direction == "LONG":
         pnl = (exit_price - entry_price) * qty
-        cash_delta = exit_price * qty
     else:
         pnl = (entry_price - exit_price) * qty
-        cash_delta = entry_price * qty + pnl
+
+    cash_delta = position_value + pnl
 
     pnl_pct = ((exit_price - entry_price) / entry_price * 100) if direction == "LONG" else ((entry_price - exit_price) / entry_price * 100)
 
@@ -259,8 +793,8 @@ def paper_account_snapshot(live_prices=None):
     start_cash = float(paper_get_setting("start_cash", 10000) or 10000)
     positions = paper_get_open_positions()
 
-    market_value = 0.0
     unrealized = 0.0
+    position_value = 0.0
 
     if not positions.empty:
         for _, row in positions.iterrows():
@@ -270,26 +804,26 @@ def paper_account_snapshot(live_prices=None):
             entry = float(row["entry_price"])
             live = float(live_prices.get(ticker, entry))
 
+            position_value += entry * qty
+
             if direction == "LONG":
-                market_value += live * qty
                 unrealized += (live - entry) * qty
             else:
                 unrealized += (entry - live) * qty
-                market_value += entry * qty + (entry - live) * qty
 
-    equity = cash + market_value
+    equity = cash + position_value + unrealized
     total_pnl = equity - start_cash
     total_pnl_pct = (total_pnl / start_cash * 100) if start_cash else 0
 
     return {
         "cash": cash,
-        "market_value": market_value,
+        "position_value": position_value,
+        "market_value": position_value + unrealized,
         "equity": equity,
         "unrealized": unrealized,
         "total_pnl": total_pnl,
         "total_pnl_pct": total_pnl_pct
     }
-
 
 def paper_process_symbol(symbol, signal, current_price, now_str, auto_enabled=True, notify=False):
     pos = paper_get_open_position(symbol)
@@ -303,23 +837,39 @@ def paper_process_symbol(symbol, signal, current_price, now_str, auto_enabled=Tr
         direction = pos["direction"]
         sl = float(pos["sl"])
         tp = float(pos["tp"])
+        
+        last_reverse_ts = float(
+        paper_get_setting(f"last_reverse_{symbol}", "0") or 0)
+
+        reverse_allowed = (
+            datetime.now().timestamp() - last_reverse_ts) > 900
 
         if direction == "LONG":
             if current_price <= sl:
                 closed_info = paper_close_position(symbol, sl, now_str, "SL")
             elif current_price >= tp:
                 closed_info = paper_close_position(symbol, tp, now_str, "TP")
-            elif signal and signal.get("type") == "SHORT":
+            elif (
+                reverse_allowed
+                and signal
+                and signal.get("type") == "SHORT"
+                and signal.get("score", 0) >= 9):
                 closed_info = paper_close_position(symbol, current_price, now_str, "REVERSE")
-
+                paper_set_setting(f"last_reverse_{symbol}", str(datetime.now().timestamp()))
+                
         elif direction == "SHORT":
             if current_price >= sl:
                 closed_info = paper_close_position(symbol, sl, now_str, "SL")
             elif current_price <= tp:
                 closed_info = paper_close_position(symbol, tp, now_str, "TP")
-            elif signal and signal.get("type") == "LONG":
+            elif (
+                reverse_allowed
+                and signal
+                and signal.get("type") == "LONG"
+                and signal.get("score", 0) >= 9):
                 closed_info = paper_close_position(symbol, current_price, now_str, "REVERSE")
-
+                paper_set_setting(f"last_reverse_{symbol}", str(datetime.now().timestamp()))
+        
     # Nach möglichem Close neu prüfen
     pos = paper_get_open_position(symbol)
 
@@ -365,6 +915,9 @@ def paper_process_symbol(symbol, signal, current_price, now_str, auto_enabled=Tr
             return opened_info, closed_info
 
         if sig_type == "LONG":
+            paper_set_cash(cash - (qty * current_price))
+
+        elif sig_type == "SHORT":
             paper_set_cash(cash - (qty * current_price))
 
         paper_open_position(
