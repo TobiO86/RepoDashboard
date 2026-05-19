@@ -12,10 +12,6 @@ import pytz
 import os
 import sqlite3
 from concurrent.futures import ThreadPoolExecutor
-import sys
-import time as _time
-import logging
-
 
 
 # =========================================================
@@ -23,7 +19,9 @@ import logging
 # Start: python TradingDashboardPro2.py --worker
 # Zweck: Paper-Trading läuft unabhängig vom Streamlit-Browser.
 # =========================================================
-
+import sys
+import time as _time
+import logging
 
 WORKER_MODE = "--worker" in sys.argv
 
@@ -106,8 +104,16 @@ if WORKER_MODE:
             w_set_setting("risk_fraction", 0.25)
         if w_get_setting("auto_mode") is None:
             w_set_setting("auto_mode", "0")
+        if w_get_setting("auto_trade_scanner_signal") is None:
+            w_set_setting("auto_trade_scanner_signal", "0")
+        if w_get_setting("scanner_worker_telegram") is None:
+            w_set_setting("scanner_worker_telegram", "1")
+        if w_get_setting("scanner_limit") is None:
+            w_set_setting("scanner_limit", "100")
         if w_get_setting("paper_watchlist") is None:
             w_set_setting("paper_watchlist", "BTC-USD, TSLA, NVDA")
+        if w_get_setting("paper_trade_weekend_crypto") is None:
+            w_set_setting("paper_trade_weekend_crypto", "0")
 
     def w_get_cash():
         return float(w_get_setting("cash", 10000) or 10000)
@@ -159,14 +165,16 @@ if WORKER_MODE:
         entry_price = float(pos["entry_price"])
         direction = pos["direction"]
 
+        position_value = entry_price * qty
+
         if direction == "LONG":
             pnl = (exit_price - entry_price) * qty
-            cash_delta = exit_price * qty
             pnl_pct = (exit_price - entry_price) / entry_price * 100
         else:
             pnl = (entry_price - exit_price) * qty
-            cash_delta = entry_price * qty + pnl
             pnl_pct = (entry_price - exit_price) / entry_price * 100
+
+        cash_delta = position_value + pnl
 
         conn = w_get_conn()
         c = conn.cursor()
@@ -226,6 +234,37 @@ if WORKER_MODE:
         if time(16, 0) <= current_time < time(20, 0):
             return "AFTERHOURS"
         return "CLOSED"
+
+    def w_get_sp500_symbols():
+        return [
+            "AAPL","MSFT","NVDA","AMZN","META","GOOGL","TSLA",
+            "AVGO","TSM","AMD","NFLX","INTC","ADBE","CRM","LITE",
+            "COIN","PLTR","RIVN","SOFI","SNAP","ROKU",
+            "UPST","AFRM","DKNG","SHOP","SQ","PYPL",
+            "SMCI","ARM","MU","ASML","LRCX","KLAC","MRVL",
+            "JPM","GS","BAC","MS","SCHW",
+            "XOM","CVX","OXY","SLB","HAL","ENR.DE",
+            "LLY","UNH","JNJ","MRNA","BNTX",
+            "CAT","BA","GE","DE","NOC",
+            "SPY","QQQ","IWM","DIA","XLF","XLK","XLE",
+            "^GSPC","^NDX","^DJI",
+            "VIXY","UVXY",
+            "BTC-USD","ETH-USD","SOL-USD","XRP_USD","ADA_USD","DOGE"
+        ]
+
+    def w_filter_symbols_by_session(symbols, session):
+        limit = int(w_get_setting("scanner_limit", "100") or 100)
+        limit = max(1, min(limit, 500))
+        if session == "RTH":
+            symbols = symbols[:limit]
+        else:
+            symbols = symbols[:min(limit, 30)]
+        if session == "WEEKEND":
+            return [s for s in symbols if "=F" in s or "USD" in s]
+        return symbols
+
+    def w_get_scanner_symbols():
+        return sorted(set(w_filter_symbols_by_session(w_get_sp500_symbols(), w_get_market_session())))
 
     def w_compute_atr(df):
         tr = np.maximum(
@@ -354,17 +393,17 @@ if WORKER_MODE:
         pullback_short = trend_down and price_i < vwap_i and abs(price_i - ema20_i) <= atr_i * 0.6
 
         long_score = short_score = 0
-        if dollar_vol > 5_000_000:
+        if dollar_vol > 12_000_000:
             long_score += 1; short_score += 1
         if dollar_vol > 20_000_000:
             long_score += 1; short_score += 1
-        if pd.notna(rel_vol) and rel_vol > 1.2:
+        if pd.notna(rel_vol) and rel_vol > 1.4:
             long_score += 1; short_score += 1
         if pd.notna(rel_vol) and rel_vol > 1.8:
             long_score += 1; short_score += 1
-        if pd.notna(atr_pct) and atr_pct > 0.003:
+        if pd.notna(atr_pct) and atr_pct > 0.005:
             long_score += 1; short_score += 1
-        if pd.notna(atr_pct) and atr_pct > 0.008:
+        if pd.notna(atr_pct) and atr_pct > 0.01:
             long_score += 1; short_score += 1
         if trend_up:
             long_score += 2
@@ -442,32 +481,65 @@ if WORKER_MODE:
             direction = pos["direction"]
             sl = float(pos["sl"])
             tp = float(pos["tp"])
+            last_reverse_ts = float(w_get_setting(f"last_reverse_{symbol}", "0") or 0)
+            reverse_allowed = (_time.time() - last_reverse_ts) > 900
+
             if direction == "LONG":
                 if current_price <= sl:
                     closed_info = w_close_position(symbol, sl, now_str, "SL")
                 elif current_price >= tp:
                     closed_info = w_close_position(symbol, tp, now_str, "TP")
-                elif signal and signal.get("type") == "SHORT":
+                elif (
+                    reverse_allowed
+                    and signal
+                    and signal.get("type") == "SHORT"
+                    and signal.get("score", 0) >= 9
+                ):
                     closed_info = w_close_position(symbol, current_price, now_str, "REVERSE")
+                    w_set_setting(f"last_reverse_{symbol}", str(_time.time()))
             elif direction == "SHORT":
                 if current_price >= sl:
                     closed_info = w_close_position(symbol, sl, now_str, "SL")
                 elif current_price <= tp:
                     closed_info = w_close_position(symbol, tp, now_str, "TP")
-                elif signal and signal.get("type") == "LONG":
+                elif (
+                    reverse_allowed
+                    and signal
+                    and signal.get("type") == "LONG"
+                    and signal.get("score", 0) >= 9
+                ):
                     closed_info = w_close_position(symbol, current_price, now_str, "REVERSE")
+                    w_set_setting(f"last_reverse_{symbol}", str(_time.time()))
 
         pos = w_get_open_position(symbol)
         if auto_enabled and signal and signal.get("signal_ok") and not pos:
+
+            watchlist_raw = w_get_setting(
+                "paper_watchlist",
+                ""
+            )
+
+            watchlist_symbols = {
+                s.strip().upper()
+                for s in watchlist_raw.split(",")
+                if s.strip()
+            }
+
+            if symbol.upper() not in watchlist_symbols:
+                return opened_info, closed_info
+
             sig_type = signal.get("type")
             signal_key = f"{symbol}_{sig_type}_{signal.get('timestamp', now_str)}"
             if signal_key == w_get_setting(f"last_signal_key_{symbol}", ""):
                 return opened_info, closed_info
+
             cash = w_get_cash()
             risk_fraction = float(w_get_setting("risk_fraction", 0.25) or 0.25)
+            risk_fraction = max(0.0, min(risk_fraction, 1.0))
             qty = max((cash * risk_fraction) / current_price, 0)
             if qty <= 0:
                 return opened_info, closed_info
+
             sig_sl = float(signal["sl"])
             sig_tp = float(signal["tp"])
             if sig_type == "LONG" and not (sig_sl < current_price < sig_tp):
@@ -476,8 +548,12 @@ if WORKER_MODE:
             if sig_type == "SHORT" and not (sig_tp < current_price < sig_sl):
                 logging.info("%s SHORT blockiert: TP/Entry/SL ungültig", symbol)
                 return opened_info, closed_info
+
             if sig_type == "LONG":
                 w_set_cash(cash - qty * current_price)
+            elif sig_type == "SHORT":
+                w_set_cash(cash - qty * current_price)
+
             w_open_position(symbol, sig_type, qty, current_price, sig_sl, sig_tp, now_str)
             w_set_setting(f"last_signal_key_{symbol}", signal_key)
             opened_info = {"ticker": symbol, "direction": sig_type, "qty": qty, "entry_price": current_price, "sl": sig_sl, "tp": sig_tp}
@@ -501,16 +577,39 @@ if WORKER_MODE:
 
     def w_run_once():
         auto_enabled = (w_get_setting("auto_mode", "0") == "1")
+        weekend_crypto_enabled = (
+        w_get_setting("paper_trade_weekend_crypto", "0") == "1")
+
+        if w_get_market_session() == "WEEKEND" and not weekend_crypto_enabled:
+            auto_enabled = False
+            logging.info("Weekend Crypto Paper-Trading deaktiviert")
+            
         notify = (w_get_setting("paper_telegram", "0") == "1")
-        symbols = w_get_symbols_to_watch()
+        scanner_notify = (w_get_setting("scanner_worker_telegram", "1") == "1")
+        auto_on_scanner_signal = (w_get_setting("auto_trade_scanner_signal", "0") == "1")
+        session = w_get_market_session()
+
+        paper_symbols = set(w_get_symbols_to_watch())
+
+        scanner_interval = int(os.environ.get("SCANNER_WORKER_INTERVAL", "300"))
+        last_scanner_run = float(w_get_setting("last_scanner_worker_run", "0") or 0)
+        scanner_due = (_time.time() - last_scanner_run) >= scanner_interval
+        scanner_symbols = set(w_get_scanner_symbols()) if scanner_due and (scanner_notify or auto_on_scanner_signal) else set()
+
+        symbols = sorted(paper_symbols | scanner_symbols)
         if not symbols:
-            logging.info("Keine Paper-Watchlist Symbole")
+            logging.info("Keine Worker-Symbole")
             return
+
         data_all = w_download_symbols(symbols)
         now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         opened_count = 0
         closed_count = 0
-        for symbol in symbols:
+        scanner_sent = 0
+        scanner_auto_opened = 0
+
+        # 1) Paper-Watchlist und offene Positionen überwachen/handeln
+        for symbol in sorted(paper_symbols):
             df_s = data_all.get(symbol)
             if df_s is None or df_s.empty or "Close" not in df_s.columns:
                 continue
@@ -528,7 +627,62 @@ if WORKER_MODE:
             if closed:
                 closed_count += 1
                 logging.info("CLOSE %s %s Grund %s PnL %.2f", closed["direction"], symbol, closed["exit_reason"], closed["pnl"])
-        logging.info("Worker Zyklus fertig: symbols=%s auto=%s opened=%s closed=%s", len(symbols), auto_enabled, opened_count, closed_count)
+
+        # 2) Scanner im Hintergrund: Telegram unabhängig von geladener Streamlit-Seite
+        if scanner_symbols:
+            for symbol in sorted(scanner_symbols):
+                df_s = data_all.get(symbol)
+                if df_s is None or df_s.empty or "Close" not in df_s.columns:
+                    continue
+                signal = w_process_symbol(symbol, data_all)
+                if not signal or not signal.get("signal_ok"):
+                    continue
+
+                signal_id = f"{symbol}_{signal.get('setup')}_{signal.get('timestamp')}"
+                sent_key = f"scanner_signal_sent_{signal_id}"
+                already_sent = w_get_setting(sent_key, "0") == "1"
+
+                # Wie vorher im Dashboard: Scanner-Telegram nur während US-RTH
+                if session == "RTH" and not already_sent:
+                    if scanner_notify:
+                        w_send_telegram(
+                            f"🚨 {symbol} {signal['setup']}\n\n"
+                            f"Entry: {signal['price']:.2f}\n"
+                            f"SL: {signal['sl']:.2f}\n"
+                            f"TP: {signal['tp']:.2f}\n"
+                            f"RR: {signal['rr']:.2f}\n\n"
+                            f"Score: {signal['score']}"
+                        )
+                        scanner_sent += 1
+
+                    w_set_setting(sent_key, "1")
+
+                    if auto_on_scanner_signal:
+                        close = df_s["Close"]
+                        if isinstance(close, pd.DataFrame):
+                            close = close.iloc[:, 0]
+                        current_price = float(close.dropna().iloc[-1])
+                        opened, closed = w_process_paper_symbol(
+                            symbol,
+                            signal,
+                            current_price,
+                            now_str,
+                            auto_enabled=True,
+                            notify=notify,
+                        )
+                        if opened:
+                            scanner_auto_opened += 1
+                            logging.info("SCANNER AUTO OPEN %s %s Entry %.2f", opened["direction"], symbol, opened["entry_price"])
+                        if closed:
+                            closed_count += 1
+                            logging.info("SCANNER AUTO CLOSE %s %s Grund %s PnL %.2f", closed["direction"], symbol, closed["exit_reason"], closed["pnl"])
+
+            w_set_setting("last_scanner_worker_run", str(_time.time()))
+
+        logging.info(
+            "Worker Zyklus fertig: paper_symbols=%s scanner_symbols=%s auto=%s scanner_auto=%s opened=%s scanner_auto_opened=%s closed=%s scanner_sent=%s",
+            len(paper_symbols), len(scanner_symbols), auto_enabled, auto_on_scanner_signal, opened_count, scanner_auto_opened, closed_count, scanner_sent
+        )
 
     def w_run_forever():
         w_init_db()
@@ -744,14 +898,12 @@ def paper_close_position(ticker, exit_price, exit_time, exit_reason):
     entry_price = float(pos["entry_price"])
     direction = pos["direction"]
 
-    position_value = entry_price * qty
-
     if direction == "LONG":
         pnl = (exit_price - entry_price) * qty
+        cash_delta = exit_price * qty
     else:
         pnl = (entry_price - exit_price) * qty
-
-    cash_delta = position_value + pnl
+        cash_delta = entry_price * qty + pnl
 
     pnl_pct = ((exit_price - entry_price) / entry_price * 100) if direction == "LONG" else ((entry_price - exit_price) / entry_price * 100)
 
@@ -793,8 +945,8 @@ def paper_account_snapshot(live_prices=None):
     start_cash = float(paper_get_setting("start_cash", 10000) or 10000)
     positions = paper_get_open_positions()
 
+    market_value = 0.0
     unrealized = 0.0
-    position_value = 0.0
 
     if not positions.empty:
         for _, row in positions.iterrows():
@@ -804,26 +956,26 @@ def paper_account_snapshot(live_prices=None):
             entry = float(row["entry_price"])
             live = float(live_prices.get(ticker, entry))
 
-            position_value += entry * qty
-
             if direction == "LONG":
+                market_value += live * qty
                 unrealized += (live - entry) * qty
             else:
                 unrealized += (entry - live) * qty
+                market_value += entry * qty + (entry - live) * qty
 
-    equity = cash + position_value + unrealized
+    equity = cash + market_value
     total_pnl = equity - start_cash
     total_pnl_pct = (total_pnl / start_cash * 100) if start_cash else 0
 
     return {
         "cash": cash,
-        "position_value": position_value,
-        "market_value": position_value + unrealized,
+        "market_value": market_value,
         "equity": equity,
         "unrealized": unrealized,
         "total_pnl": total_pnl,
         "total_pnl_pct": total_pnl_pct
     }
+
 
 def paper_process_symbol(symbol, signal, current_price, now_str, auto_enabled=True, notify=False):
     pos = paper_get_open_position(symbol)
@@ -837,39 +989,23 @@ def paper_process_symbol(symbol, signal, current_price, now_str, auto_enabled=Tr
         direction = pos["direction"]
         sl = float(pos["sl"])
         tp = float(pos["tp"])
-        
-        last_reverse_ts = float(
-        paper_get_setting(f"last_reverse_{symbol}", "0") or 0)
-
-        reverse_allowed = (
-            datetime.now().timestamp() - last_reverse_ts) > 900
 
         if direction == "LONG":
             if current_price <= sl:
                 closed_info = paper_close_position(symbol, sl, now_str, "SL")
             elif current_price >= tp:
                 closed_info = paper_close_position(symbol, tp, now_str, "TP")
-            elif (
-                reverse_allowed
-                and signal
-                and signal.get("type") == "SHORT"
-                and signal.get("score", 0) >= 9):
+            elif signal and signal.get("type") == "SHORT":
                 closed_info = paper_close_position(symbol, current_price, now_str, "REVERSE")
-                paper_set_setting(f"last_reverse_{symbol}", str(datetime.now().timestamp()))
-                
+
         elif direction == "SHORT":
             if current_price >= sl:
                 closed_info = paper_close_position(symbol, sl, now_str, "SL")
             elif current_price <= tp:
                 closed_info = paper_close_position(symbol, tp, now_str, "TP")
-            elif (
-                reverse_allowed
-                and signal
-                and signal.get("type") == "LONG"
-                and signal.get("score", 0) >= 9):
+            elif signal and signal.get("type") == "LONG":
                 closed_info = paper_close_position(symbol, current_price, now_str, "REVERSE")
-                paper_set_setting(f"last_reverse_{symbol}", str(datetime.now().timestamp()))
-        
+
     # Nach möglichem Close neu prüfen
     pos = paper_get_open_position(symbol)
 
@@ -915,9 +1051,6 @@ def paper_process_symbol(symbol, signal, current_price, now_str, auto_enabled=Tr
             return opened_info, closed_info
 
         if sig_type == "LONG":
-            paper_set_cash(cash - (qty * current_price))
-
-        elif sig_type == "SHORT":
             paper_set_cash(cash - (qty * current_price))
 
         paper_open_position(
@@ -1416,6 +1549,8 @@ current_start_cash = float(paper_get_setting("start_cash", 10000) or 10000)
 current_risk_fraction = float(paper_get_setting("risk_fraction", 0.25) or 0.25)
 current_auto_mode = (paper_get_setting("auto_mode", "0") == "1")
 current_paper_telegram = (paper_get_setting("paper_telegram", "0") == "1")
+current_scanner_worker_telegram = (paper_get_setting("scanner_worker_telegram", "1") == "1")
+current_auto_trade_scanner_signal = (paper_get_setting("auto_trade_scanner_signal", "0") == "1")
 
 paper_start_cash_input = st.sidebar.number_input(
     "Startkapital",
@@ -1427,10 +1562,10 @@ paper_start_cash_input = st.sidebar.number_input(
 
 paper_risk_fraction_input = st.sidebar.slider(
     "Einsatz pro Trade (% vom Cash)",
-    min_value=5,
+    min_value=0,
     max_value=100,
-    value=int(current_risk_fraction * 100),
-    step=5,
+    value=max(0, min(100, int(current_risk_fraction * 100))),
+    step=1,
     key="paper_risk_fraction_input"
 )
 
@@ -1446,6 +1581,26 @@ paper_telegram = st.sidebar.checkbox(
     key="paper_telegram"
 )
 
+scanner_worker_telegram = st.sidebar.checkbox(
+    "Scanner-Telegram im Worker",
+    value=current_scanner_worker_telegram,
+    key="scanner_worker_telegram"
+)
+
+auto_trade_scanner_signal = st.sidebar.checkbox(
+    "Auto-Trade bei Scanner-Telegram-Signal",
+    value=current_auto_trade_scanner_signal,
+    key="auto_trade_scanner_signal"
+)
+
+current_weekend_crypto = (
+    paper_get_setting("paper_trade_weekend_crypto", "0") == "1")
+
+paper_trade_weekend_crypto = st.sidebar.checkbox(
+    "Paper-Trading am Wochenende für Crypto erlauben",
+    value=current_weekend_crypto,
+    key="paper_trade_weekend_crypto")
+
 if st.sidebar.button("💾 Paper Settings speichern"):
     paper_set_setting("paper_watchlist", paper_watchlist_input)
     paper_set_setting("start_cash", paper_start_cash_input)
@@ -1454,6 +1609,9 @@ if st.sidebar.button("💾 Paper Settings speichern"):
     paper_set_setting("risk_fraction", paper_risk_fraction_input / 100)
     paper_set_setting("auto_mode", "1" if paper_auto_mode else "0")
     paper_set_setting("paper_telegram", "1" if paper_telegram else "0")
+    paper_set_setting("scanner_worker_telegram", "1" if scanner_worker_telegram else "0")
+    paper_set_setting("auto_trade_scanner_signal", "1" if auto_trade_scanner_signal else "0")
+    paper_set_setting("paper_trade_weekend_crypto","1" if paper_trade_weekend_crypto else "0")
     st.sidebar.success("Paper Settings gespeichert")
 
 if st.sidebar.button("🗑️ Paper Konto reset"):
@@ -1843,12 +2001,18 @@ def render_list(title, stocks):
 st.sidebar.markdown("---")
 st.sidebar.subheader("🔥 Scanner PRO MAX")
 
+current_scanner_limit = int(paper_get_setting("scanner_limit", 100) or 100)
+
 limit = st.sidebar.slider(
     "Universe Size",
-    50, 500, 100,
+    50, 500,
+    value=max(50, min(500, current_scanner_limit)),
     step=50,
     key="scanner_limit"
 )
+
+if limit != current_scanner_limit:
+    paper_set_setting("scanner_limit", limit)
 
 live_mode = st.sidebar.checkbox("⚡ Live Mode (RTH only)", True)
 show_rth_only_vwap = st.sidebar.checkbox("VWAP nur RTH", True)
